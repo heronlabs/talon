@@ -5,13 +5,17 @@ go 1.27.0
 toolchain go1.27.1
 
 require (
+	github.com/google/go-cmp v0.7.0
+	golang.org/x/tools v0.50.0
+)
+
+require (
 	github.com/MakeNowJust/heredoc v1.0.0 // indirect
 	github.com/bluekeyes/go-gitdiff v0.8.1 // indirect
 	github.com/fatih/color v1.18.0 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-gremlins/gremlins v0.6.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
-	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/hako/durafmt v0.0.0-20210608085754-5c1018a4e16b // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
@@ -31,7 +35,6 @@ require (
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/telemetry v0.0.0-20260908163034-4bcc4b2ee518 // indirect
 	golang.org/x/text v0.31.0 // indirect
-	golang.org/x/tools v0.50.0 // indirect
 	golang.org/x/vuln v1.8.0 // indirect
 )
 
