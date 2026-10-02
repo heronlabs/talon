@@ -3,7 +3,7 @@ GOOS ?= $(shell go env GOOS)
 GOARCH ?= $(shell go env GOARCH)
 BIN ?= bin/vps-agent
 
-.PHONY: hooks build lint test test-integration test-mutation audit
+.PHONY: hooks build lint test test-integration test-installer test-mutation audit
 
 hooks:
 	git config core.hooksPath .githooks
@@ -18,7 +18,7 @@ lint:
 	golangci-lint run
 	GOFLAGS=-tags=integration go run ./internal/tools/testshape/cmd/testshape ./...
 	go mod tidy -diff
-	shellcheck scripts/*.sh .githooks/pre-commit
+	shellcheck scripts/*.sh test/installer/*.sh test/installer/fakebin/curl .githooks/pre-commit
 	actionlint
 
 test:
@@ -27,6 +27,9 @@ test:
 
 test-integration:
 	go test -race -tags integration ./test/integration/...
+
+test-installer:
+	test/installer/run.sh
 
 test-mutation:
 	mkdir -p reports

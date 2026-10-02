@@ -22,6 +22,12 @@ linters:
           deny:
             - pkg: github.com/heronlabs/vps-agent/internal
               desc: domain imports nothing internal
+            - pkg: os
+              desc: domain does no I/O
+            - pkg: net
+              desc: domain does no I/O
+            - pkg: syscall
+              desc: domain does no I/O
         port:
           files: ["**/internal/core/port/**", "!$test"]
           deny:
@@ -33,6 +39,12 @@ linters:
           files: ["**/internal/core/usecase/**", "!$test"]
           deny:
             - pkg: github.com/heronlabs/vps-agent/internal/infrastructure
+              desc: use cases reach the outside world only through ports
+            - pkg: os
+              desc: use cases reach the outside world only through ports
+            - pkg: net
+              desc: use cases reach the outside world only through ports
+            - pkg: syscall
               desc: use cases reach the outside world only through ports
         infrastructure:
           files: ["**/internal/infrastructure/**", "!$test"]

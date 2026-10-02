@@ -1,0 +1,94 @@
+name: 'Deploy'
+
+# Installs a published release on every VPS in DEPLOY_HOSTS: deploy, redeploy or rollback.
+# Manual only; the CD never calls it. The SSH key can only run `vps-agent deploy <version>` on the
+# host (forced command, restrict, exact sudoers line), and the host installs only releases signed
+# by the heronlabs release key.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release to install, like 1.2.3 (no v).
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  # Environment variables are not resolved while a matrix is expanded, so DEPLOY_HOSTS is read
+  # by a job of the environment and handed to the matrix as an output.
+  hosts:
+    name: 'Hosts'
+    runs-on: ubuntu-24.04
+    environment: production
+    outputs:
+      hosts: ${{ steps.hosts.outputs.hosts }}
+    steps:
+      - name: Validate version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "::error::version must look like 1.2.3"
+            exit 1
+          }
+
+      - name: Read DEPLOY_HOSTS
+        id: hosts
+        env:
+          DEPLOY_HOSTS: ${{ vars.DEPLOY_HOSTS }}
+        run: |
+          hosts="$(python3 -c '
+          import json, os
+          hosts = json.loads(os.environ["DEPLOY_HOSTS"])
+          assert isinstance(hosts, list) and hosts and all(isinstance(h, str) and h for h in hosts)
+          print(json.dumps(hosts))
+          ')" || {
+            echo "::error::DEPLOY_HOSTS must be a non-empty JSON array of host names"
+            exit 1
+          }
+          echo "hosts=$hosts" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    name: 'Deploy'
+    needs: hosts
+    runs-on: ubuntu-24.04
+    environment: production
+    strategy:
+      fail-fast: false
+      matrix:
+        host: ${{ fromJSON(needs.hosts.outputs.hosts) }}
+    steps:
+      - name: Validate version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "::error::version must look like 1.2.3"
+            exit 1
+          }
+
+      - name: Run vps-agent deploy over SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          HOST: ${{ matrix.host }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          umask 077
+          ssh_dir="$RUNNER_TEMP/deploy-ssh"
+          mkdir -p "$ssh_dir"
+          trap 'rm -rf "$ssh_dir"' EXIT
+          printenv DEPLOY_SSH_KEY > "$ssh_dir/key"
+          chmod 0600 "$ssh_dir/key"
+          printenv DEPLOY_KNOWN_HOSTS > "$ssh_dir/known_hosts"
+          ssh -i "$ssh_dir/key" \
+            -o UserKnownHostsFile="$ssh_dir/known_hosts" \
+            -o StrictHostKeyChecking=yes \
+            -o IdentitiesOnly=yes \
+            -o BatchMode=yes \
+            vps-agent-deploy@"$HOST" "$VERSION"

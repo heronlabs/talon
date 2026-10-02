@@ -24,6 +24,7 @@ AWS_SECRET_ACCESS_KEY=secret
 AWS_REGION=sa-east-1
 RECONCILE_INTERVAL=1m
 REPORT_INTERVAL=2m
+GITHUB_TOKEN=gh
 `
 
 var errFallback = errors.New("fallback")
@@ -52,7 +53,7 @@ func TestParse_ReadsEveryKey(t *testing.T) {
 		CMSURL: "https://cms.heronlabs.com.br", AgentToken: "token", HostName: "vps-heron-02",
 		EasypanelURL: "http://127.0.0.1:3001", EasypanelToken: "ep",
 		AWSAccessKeyID: "AKIA", AWSSecretAccessKey: "secret", AWSRegion: "sa-east-1",
-		ReconcileInterval: time.Minute, ReportInterval: 2 * time.Minute,
+		ReconcileInterval: time.Minute, ReportInterval: 2 * time.Minute, GitHubToken: "gh",
 	}, got)
 }
 
@@ -213,6 +214,52 @@ func TestHostNameOr_FailsOnInvalidFile(t *testing.T) {
 
 func TestHostNameOr_FailsOnWrongMode(t *testing.T) {
 	_, err := config.File{Dir: dir(full, 0o644), Name: "config.env"}.HostNameOr(hostname)
+
+	testkit.ErrorIs(t, err, config.ErrInvalid)
+}
+
+func TestKeys_ListsEveryKeyParseAccepts(t *testing.T) {
+	got := config.Keys()
+
+	testkit.Equal(t, []string{
+		"CMS_URL", "AGENT_TOKEN", "AGENT_HOST_NAME", "EASYPANEL_URL", "EASYPANEL_TOKEN",
+		"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION", "RECONCILE_INTERVAL", "REPORT_INTERVAL",
+		"GITHUB_TOKEN",
+	}, got)
+}
+
+func TestGitHubToken_ReadsTheToken(t *testing.T) {
+	got := testkit.Must(config.File{Dir: dir(full, 0o600), Name: "config.env"}.GitHubToken())
+
+	testkit.Equal(t, "gh", got)
+}
+
+func TestGitHubToken_FailsWhenTheTokenIsMissing(t *testing.T) {
+	_, err := config.File{Dir: dir("AGENT_HOST_NAME=srv\n", 0o600), Name: "config.env"}.GitHubToken()
+
+	testkit.ErrorIs(t, err, config.ErrMissingToken)
+}
+
+func TestGitHubToken_TellsHowToAddTheToken(t *testing.T) {
+	_, err := config.File{Dir: dir("GITHUB_TOKEN=\n", 0o600), Name: "config.env"}.GitHubToken()
+
+	testkit.Equal(t, "GITHUB_TOKEN is missing from the config: run install.sh again with GITHUB_TOKEN", err.Error())
+}
+
+func TestGitHubToken_FailsOnInvalidFile(t *testing.T) {
+	_, err := config.File{Dir: dir("NOPE=1\n", 0o600), Name: "config.env"}.GitHubToken()
+
+	testkit.ErrorIs(t, err, config.ErrInvalid)
+}
+
+func TestCheckSyntax_AcceptsAValidConfig(t *testing.T) {
+	err := config.Syntax{}.CheckSyntax([]byte(full))
+
+	testkit.ErrorIs(t, err, nil)
+}
+
+func TestCheckSyntax_RejectsAnUnknownKey(t *testing.T) {
+	err := config.Syntax{}.CheckSyntax([]byte("NOPE=1\n"))
 
 	testkit.ErrorIs(t, err, config.ErrInvalid)
 }

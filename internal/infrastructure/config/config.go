@@ -15,6 +15,18 @@ import (
 // ErrInvalid marks a configuration file the agent refuses.
 var ErrInvalid = errors.New("invalid config")
 
+// ErrMissingToken marks a configuration without GITHUB_TOKEN, which update needs.
+var ErrMissingToken = errors.New("GITHUB_TOKEN is missing from the config")
+
+// Keys lists every key the configuration file accepts, in the order install.sh documents them.
+func Keys() []string {
+	return []string{
+		"CMS_URL", "AGENT_TOKEN", "AGENT_HOST_NAME", "EASYPANEL_URL", "EASYPANEL_TOKEN",
+		"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION", "RECONCILE_INTERVAL", "REPORT_INTERVAL",
+		"GITHUB_TOKEN",
+	}
+}
+
 // Config is the agent configuration. Each subcommand checks only the fields it uses.
 type Config struct {
 	CMSURL             string
@@ -27,6 +39,7 @@ type Config struct {
 	AWSRegion          string
 	ReconcileInterval  time.Duration
 	ReportInterval     time.Duration
+	GitHubToken        string
 }
 
 func defaults() Config {
@@ -101,6 +114,7 @@ func (c *Config) set(key, value string) error {
 		"AWS_ACCESS_KEY_ID":     &c.AWSAccessKeyID,
 		"AWS_SECRET_ACCESS_KEY": &c.AWSSecretAccessKey,
 		"AWS_REGION":            &c.AWSRegion,
+		"GITHUB_TOKEN":          &c.GitHubToken,
 	}
 	durations := map[string]*time.Duration{
 		"RECONCILE_INTERVAL": &c.ReconcileInterval,
@@ -149,4 +163,25 @@ func (f File) HostNameOr(fallback func() (string, error)) (string, error) {
 		return fallback()
 	}
 	return cfg.HostName, nil
+}
+
+// GitHubToken returns GITHUB_TOKEN, the token update reads releases with.
+func (f File) GitHubToken() (string, error) {
+	cfg, err := Load(f.Dir, f.Name)
+	if err != nil {
+		return "", err
+	}
+	if cfg.GitHubToken == "" {
+		return "", fmt.Errorf("%w: run install.sh again with GITHUB_TOKEN", ErrMissingToken)
+	}
+	return cfg.GitHubToken, nil
+}
+
+// Syntax checks configuration contents without reading a file.
+type Syntax struct{}
+
+// CheckSyntax implements port.ConfigSyntax.
+func (Syntax) CheckSyntax(data []byte) error {
+	_, err := Parse(bytes.NewReader(data))
+	return err
 }

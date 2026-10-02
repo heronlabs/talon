@@ -96,6 +96,19 @@ jobs:
 
       - run: make test-integration
 
+  installer:
+    needs: build
+    name: 'Installer'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - run: make test-installer
+
   mutation:
     needs: unit
     name: 'Mutation Tests'

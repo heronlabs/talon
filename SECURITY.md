@@ -11,10 +11,10 @@ Expect a response within 72 hours. After triage we will keep you updated on prog
 `vps-agent` runs as root on Easypanel hosts. It handles:
 
 - the Docker socket, which is equivalent to root on the host;
-- `/etc/vps-agent/config.env` (mode 0600) with the CMS, Easypanel and AWS credentials of the host;
-- the release download token used by `scripts/install.sh`.
+- `/etc/vps-agent/config.env` (mode 0600) with the CMS, Easypanel and AWS credentials of the host and the release download token (`GITHUB_TOKEN`);
+- the `vps-agent-deploy` user, whose SSH key can only run `sudo vps-agent deploy <version>`.
 
-Key concerns: credential exposure in logs or reports, integrity of the released binary (`checksums.txt`), and anything that would let a CMS manifest make the agent read or write beyond its host.
+Key concerns: credential exposure in logs or reports, integrity of the released binary (`checksums.txt` signed with the ed25519 release key, `checksums.txt.sig`), anything that would let the deploy key do more than install a signed release, and anything that would let a CMS manifest make the agent read or write beyond its host.
 
 ### Supported versions
 

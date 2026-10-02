@@ -71,6 +71,7 @@ jobs:
   publish:
     needs: [release, binaries]
     runs-on: ubuntu-24.04
+    environment: release
     steps:
       - uses: actions/checkout@v7
         with:
@@ -82,11 +83,25 @@ jobs:
           path: dist/
           merge-multiple: true
 
+      - name: Checksums
+        run: (cd dist && sha256sum vps-agent_* > checksums.txt)
+
+      # ed25519 over the raw checksums.txt (OpenSSL 3 of the runner). The key reaches openssl
+      # through a process substitution, never a file or argv; the check against the committed
+      # public key stops a release that installed binaries would refuse.
+      - name: Sign checksums
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: |
+          openssl pkeyutl -sign -inkey <(printenv RELEASE_SIGNING_KEY) -rawin \
+            -in dist/checksums.txt -out dist/checksums.txt.sig
+          openssl pkeyutl -verify -pubin -inkey internal/infrastructure/release/release-signing.pub -rawin \
+            -in dist/checksums.txt -sigfile dist/checksums.txt.sig
+
       - name: Upload release assets
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.release.outputs.tag }}
         run: |
           cp scripts/install.sh dist/
-          (cd dist && sha256sum vps-agent_* > checksums.txt)
           gh release upload "$TAG" dist/* --clobber

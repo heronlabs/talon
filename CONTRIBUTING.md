@@ -7,7 +7,7 @@ make hooks
 make build
 ```
 
-Requires the Go toolchain in `go.mod` (fetched automatically), plus `golangci-lint`, `shellcheck` and `actionlint` on the `PATH` (`brew install golangci-lint shellcheck actionlint`).
+Requires the Go toolchain in `go.mod` (fetched automatically), plus `golangci-lint`, `shellcheck` and `actionlint` on the `PATH` (`brew install golangci-lint shellcheck actionlint`), and Docker for `make test-installer`.
 
 ## Commands
 
@@ -17,6 +17,7 @@ Requires the Go toolchain in `go.mod` (fetched automatically), plus `golangci-li
 | `make lint` | gofmt, vet, golangci-lint, testshape, tidy, shellcheck, actionlint |
 | `make test` | Unit tests, 100% coverage of `internal/` |
 | `make test-integration` | Integration tests |
+| `make test-installer` | `install.sh` scenarios in Docker |
 | `make test-mutation` | Mutation tests, 100% efficacy |
 | `make audit` | govulncheck |
 
@@ -28,4 +29,10 @@ Requires the Go toolchain in `go.mod` (fetched automatically), plus `golangci-li
 
 ## CI
 
-All PRs must pass: Build, Lint, Audit & Supply Chain, Unit Tests, Integration Tests, Mutation Tests.
+All PRs must pass: Build, Lint, Audit & Supply Chain, Unit Tests, Integration Tests, Installer, Mutation Tests.
+
+## Releases and deploys
+
+Merging to `main` publishes a release whose `checksums.txt` is signed (`checksums.txt.sig`) with the `RELEASE_SIGNING_KEY` of the `release` environment. Nothing reaches the VPSs until someone runs the manual **Deploy** workflow with that version (see `README.md`).
+
+Keys are generated and rotated with `scripts/generate-keys.sh` (`all` or `deploy`; see _Keys and rotation_ in `README.md`). Rotating the release key on running hosts needs a transition release, signed with the current key, that embeds the new one; only after every host runs it is `RELEASE_SIGNING_KEY` replaced.

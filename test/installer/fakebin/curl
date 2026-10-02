@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Fake curl for the install.sh tests: serves the release in $FAKE_RELEASE_DIR as the GitHub API
+# would. Fails like `curl -f` (exit 22) on anything else, and refuses a token passed in argv.
+set -euo pipefail
+
+readonly api="https://api.github.com/repos/heronlabs/vps-agent"
+fixture="${FAKE_RELEASE_DIR:?}"
+token="${FAKE_GITHUB_TOKEN:?}"
+
+for arg in "$@"; do
+  case "$arg" in
+    *"$token"*) echo "fake curl: the token is in argv" >&2; exit 97 ;;
+  esac
+done
+
+out="" url="" accept="" authorized=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -o) out="$2"; shift 2 ;;
+    -H)
+      case "$2" in
+        @*) grep -qxF "Authorization: Bearer $token" "${2#@}" && authorized=1 ;;
+        "Accept: "*) accept="${2#Accept: }" ;;
+      esac
+      shift 2
+      ;;
+    -*) shift ;;
+    *) url="$1"; shift ;;
+  esac
+done
+
+[ "$authorized" -eq 1 ] || { echo "fake curl: 401 for $url" >&2; exit 22; }
+
+tag="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["tag_name"])' "$fixture/release.json")"
+case "$url" in
+  "$api/releases/latest" | "$api/releases/tags/$tag")
+    [ "$accept" = "application/vnd.github+json" ] || exit 22
+    file="$fixture/release.json"
+    ;;
+  "$api/releases/assets/"*)
+    [ "$accept" = "application/octet-stream" ] || exit 22
+    file="$fixture/assets/${url##*/}"
+    ;;
+  *) file="" ;;
+esac
+[ -n "$file" ] && [ -f "$file" ] || { echo "fake curl: 404 for $url" >&2; exit 22; }
+
+if [ -n "$out" ]; then
+  cp "$file" "$out"
+else
+  cat "$file"
+fi
