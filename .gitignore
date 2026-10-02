@@ -1,0 +1,6 @@
+bin/
+coverage.out
+coverage.filtered.out
+reports/
+.DS_Store
+dist/
