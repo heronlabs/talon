@@ -1,0 +1,92 @@
+name: 'Continuous Deployment'
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      semantic:
+        description: The SEMVER specification.
+        required: true
+        type: choice
+        default: patch
+        options:
+          - 'major'
+          - 'minor'
+          - 'patch'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: heronlabs/action-tag-release-build@v7
+        id: release
+        with:
+          ghToken: ${{ github.token }}
+          semantic: ${{ inputs.semantic }}
+
+  binaries:
+    needs: release
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release.outputs.tag }}
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Build linux/${{ matrix.arch }}
+        env:
+          VERSION: ${{ needs.release.outputs.version }}
+          ARCH: ${{ matrix.arch }}
+        run: make build GOOS=linux GOARCH="$ARCH" VERSION="$VERSION" BIN="dist/vps-agent_${VERSION}_linux_${ARCH}"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: binary-${{ matrix.arch }}
+          path: dist/
+          retention-days: 1
+          if-no-files-found: error
+
+  publish:
+    needs: [release, binaries]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release.outputs.tag }}
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: binary-*
+          path: dist/
+          merge-multiple: true
+
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.release.outputs.tag }}
+        run: |
+          cp scripts/install.sh dist/
+          (cd dist && sha256sum vps-agent_* > checksums.txt)
+          gh release upload "$TAG" dist/* --clobber

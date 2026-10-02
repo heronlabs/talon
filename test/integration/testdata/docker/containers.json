@@ -1,0 +1,10 @@
+[
+  {"Id": "c-api", "State": "running", "Labels": {"com.docker.swarm.service.name": "cms-heronlabs_cms-api"}, "Mounts": []},
+  {"Id": "c-db", "State": "running", "Labels": {"com.docker.swarm.service.name": "cms-heronlabs_cms-database"}, "Mounts": [
+    {"Type": "volume", "Name": "cms-heronlabs_cms-database_data", "Source": "/var/lib/docker/volumes/cms-heronlabs_cms-database_data/_data"},
+    {"Type": "bind", "Source": "/etc/easypanel/projects/cms-heronlabs/cms-database/backups"}
+  ]},
+  {"Id": "c-ep", "State": "running", "Labels": {"com.docker.swarm.service.name": "easypanel"}, "Mounts": [
+    {"Type": "bind", "Source": "/var/run/docker.sock"}
+  ]}
+]

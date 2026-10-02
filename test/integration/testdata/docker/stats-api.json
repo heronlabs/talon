@@ -1,0 +1,5 @@
+{"cpu_stats": {"cpu_usage": {"total_usage": 700000}, "system_cpu_usage": 20000000, "online_cpus": 2},
+ "precpu_stats": {"cpu_usage": {"total_usage": 300000}, "system_cpu_usage": 10000000},
+ "memory_stats": {"usage": 400000000, "stats": {"inactive_file": 32995328}},
+ "networks": {"eth0": {"rx_bytes": 120500000, "tx_bytes": 88100000}},
+ "blkio_stats": {"io_service_bytes_recursive": [{"op": "read", "value": 50200000}, {"op": "write", "value": 12900000}]}}

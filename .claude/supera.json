@@ -1,0 +1,11 @@
+{
+  "baseBranch": "main",
+  "buildCommand": "make build",
+  "lintCommand": "make lint",
+  "mergeMethod": "squash",
+  "remote": "origin",
+  "testCommands": {
+    "integration": "make test-integration",
+    "unit": "make test"
+  }
+}
