@@ -3,12 +3,9 @@ set -euo pipefail
 
 git diff --cached --quiet -- '*.go' go.mod go.sum && exit 0
 
-mapfile -t staged < <(git diff --cached --name-only --diff-filter=ACM -- '*.go')
-if [ "${#staged[@]}" -gt 0 ]; then
-  unformatted=$(gofmt -l "${staged[@]}")
-  [ -z "$unformatted" ] || { echo "gofmt: $unformatted" >&2; exit 1; }
-fi
+unformatted=$(git diff --cached --name-only --diff-filter=ACM -z -- '*.go' | xargs -0 gofmt -l)
+[ -z "$unformatted" ] || { echo "gofmt: $unformatted" >&2; exit 1; }
 
-make build >/dev/null
+CGO_ENABLED=0 go build ./...
 go vet ./...
 go test ./... >/dev/null
