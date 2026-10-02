@@ -1,0 +1,56 @@
+version: "2"
+
+run:
+  build-tags: [integration]
+
+linters:
+  default: standard
+  enable:
+    - depguard
+    - errorlint
+    - gocritic
+    - gosec
+    - misspell
+    - nolintlint
+    - revive
+    - unparam
+  settings:
+    depguard:
+      rules:
+        domain:
+          files: ["**/internal/core/domain/**", "!$test"]
+          deny:
+            - pkg: github.com/heronlabs/vps-agent/internal
+              desc: domain imports nothing internal
+        port:
+          files: ["**/internal/core/port/**", "!$test"]
+          deny:
+            - pkg: github.com/heronlabs/vps-agent/internal/core/usecase
+              desc: port imports only domain
+            - pkg: github.com/heronlabs/vps-agent/internal/infrastructure
+              desc: port imports only domain
+        usecase:
+          files: ["**/internal/core/usecase/**", "!$test"]
+          deny:
+            - pkg: github.com/heronlabs/vps-agent/internal/infrastructure
+              desc: use cases reach the outside world only through ports
+        infrastructure:
+          files: ["**/internal/infrastructure/**", "!$test"]
+          deny:
+            - pkg: github.com/heronlabs/vps-agent/internal/core/usecase
+              desc: adapters never import use cases
+        testkit:
+          files: ["!$test", "!**/internal/testkit/**", "!**/test/integration/**"]
+          deny:
+            - pkg: github.com/heronlabs/vps-agent/internal/testkit
+              desc: testkit is for tests only
+  exclusions:
+    presets: [comments, std-error-handling]
+    paths:
+      - internal/tools/testshape/testdata
+
+formatters:
+  enable: [gofmt, goimports]
+  settings:
+    goimports:
+      local-prefixes: [github.com/heronlabs/vps-agent]

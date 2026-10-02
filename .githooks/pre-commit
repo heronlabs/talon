@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+git diff --cached --quiet -- '*.go' go.mod go.sum && exit 0
+
+mapfile -t staged < <(git diff --cached --name-only --diff-filter=ACM -- '*.go')
+if [ "${#staged[@]}" -gt 0 ]; then
+  unformatted=$(gofmt -l "${staged[@]}")
+  [ -z "$unformatted" ] || { echo "gofmt: $unformatted" >&2; exit 1; }
+fi
+
+make build >/dev/null
+go vet ./...
+go test ./... >/dev/null
