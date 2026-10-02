@@ -30,7 +30,7 @@ Exemplo de `role.yaml` que o tenant vai usar:
   - name: vps-agent-secrets-reader
     trust:
       accountId: '088132334646'
-      principalArnLike: arn:aws:iam::088132334646:user/vps-agent-*
+      principalArnLike: arn:aws:iam::088132334646:user/user-vps-agent-*
       externalIds: [cms-heronlabs]
     statements:
       - name: ssm
@@ -75,7 +75,7 @@ Depende do RoleModule do cloud-iac (PR "RoleModule genérico"); o deploy só dep
   - name: vps-agent-secrets-reader
     trust:
       accountId: '088132334646'
-      principalArnLike: arn:aws:iam::088132334646:user/vps-agent-*
+      principalArnLike: arn:aws:iam::088132334646:user/user-vps-agent-*
       externalIds: [cms-heronlabs]
     statements:
       - name: ssm
@@ -258,14 +258,14 @@ Um PR no `heronlabs/webapps`, com spec própria lá, entregue antes da fase 2. E
     ```
 
     Do `/server-cms/` só o `DATABASE_URL`: o resto do env da API fica fora do alcance do agente. Todos os parâmetros usam a chave gerenciada `aws/ssm`, cuja key policy já libera o decrypt via SSM; o role não tem permissão de KMS. Chave KMS própria fica fora da v1;
-  - trust policy: `Principal: {"AWS": "arn:aws:iam::088132334646:root"}` com `ArnLike aws:PrincipalArn = arn:aws:iam::088132334646:user/vps-agent-*` (a AWS não aceita wildcard direto em `Principal`) e `StringEquals sts:ExternalId` igual ao slug do cliente daquela conta (lista, se a conta tem mais de um cliente);
+  - trust policy: `Principal: {"AWS": "arn:aws:iam::088132334646:root"}` com `ArnLike aws:PrincipalArn = arn:aws:iam::088132334646:user/user-vps-agent-*` (a AWS não aceita wildcard direto em `Principal`) e `StringEquals sts:ExternalId` igual ao slug do cliente daquela conta (lista, se a conta tem mais de um cliente);
   - duração máxima de sessão de 1 h; o agente pede 15 min.
 - A autorização exige os dois lados: a policy do usuário libera o assume e a trust do role aceita. Mesma regra dentro da heronlabs e entre contas.
 - `ExternalId` é uma string que quem chama `AssumeRole` é obrigado a mandar e que a trust policy confere. Aqui ele é o slug do cliente no CMS (ex.: `cms-heronlabs`): a trust do role exige esse valor e o agente manda o `slug` do cliente que está reconciliando, lido do manifesto. Não é segredo; impede que o manifesto de um cliente aponte para o role de outro, porque a trust da outra conta exige outro slug. Slug renomeado no CMS sem atualizar `externalIds` no tenant faz o `AssumeRole` ser negado: o projeto fica `failed` e o `doctor` acusa.
 - Entre contas, o `ExternalId` isola os clientes. Dentro de uma mesma conta com mais de um cliente, o role é um só e a lista dele soma os parâmetros de todos; o isolamento entre esses clientes depende só de quem edita o manifesto no CMS. Hoje cada conta tem um cliente; se uma conta passar a ter vários e isso importar, o caminho é um role por cliente (`vps-agent-secrets-reader-<slug>`), cada um com a sua lista.
 - O que vaza em cada caso:
   - `AGENT_TOKEN` (CMS) vazado: só nomes de parâmetro e ARNs de role, nenhum valor;
-  - access key do `vps-agent-srv655164` vazada: os parâmetros listados nos roles das contas que confiam no padrão `vps-agent-*`. Equivale a perder o host, cujo Easypanel já guarda esses valores em texto puro. Revogar é desativar a key na heronlabs, sem tocar nas contas dos clientes;
+  - access key do `vps-agent-srv655164` vazada: os parâmetros listados nos roles das contas que confiam no padrão `user-vps-agent-*`. Equivale a perder o host, cujo Easypanel já guarda esses valores em texto puro. Revogar é desativar a key na heronlabs, sem tocar nas contas dos clientes;
   - edição maliciosa no CMS: pode criar, num cliente, um serviço com imagem própria e apontar para segredo do mesmo cliente. É o mesmo risco que a imagem vinda do manifesto já tem (ver _Fora de escopo_).
 - Rotação: o agente nunca sobrescreve valor presente. Para rotacionar na v1, o operador atualiza o parâmetro no SSM e apaga a chave no painel; o reconcile seguinte grava o valor novo.
 - Configuração local em `/etc/vps-agent/config.env`, `root:root 0600`: `CMS_URL`, `AGENT_TOKEN`, `AGENT_HOST_NAME`, `EASYPANEL_URL` (padrão `http://127.0.0.1:3000`), `EASYPANEL_TOKEN`, `AWS_ACCESS_KEY_ID` e `AWS_SECRET_ACCESS_KEY` (do `vps-agent-srv655164`), `AWS_REGION` (padrão `us-east-1`), `RECONCILE_INTERVAL` (padrão `5m`), `REPORT_INTERVAL` (padrão `10m`). O agente lê as chaves AWS só desse arquivo, nunca de `~/.aws` nem de metadata de instância. Formato `KEY=VALUE`, uma por linha; linhas vazias e `#` ignoradas; espaços em volta da chave e do valor, `\r` de fim de linha e um par de aspas duplas em volta do valor são descartados; chave desconhecida ou repetida recusa o arquivo. Cada subcomando valida só o que usa: `report --once` não exige nada do CMS, do Easypanel nem da AWS; `plan` exige CMS e Easypanel; `run` exige tudo.

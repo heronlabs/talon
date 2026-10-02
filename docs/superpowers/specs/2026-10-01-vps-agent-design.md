@@ -220,7 +220,7 @@ Mapeamento para a API do Easypanel (nomes de procedure confirmados na captura da
   - o id e o secret do usuário IAM do backup do `terminal-cli` (ex.: `/server-cms-backup/*`);
   - o `DATABASE_URL` da app, só para criar o banco (ex.: `/server-cms/DATABASE_URL`).
   Esses usuários e parâmetros já são criados pelo `UserModule` e pelo `ParameterModule` do `cloud-iac`. O resto do env sensível da app continua onde já está: a app carrega do SSM no boot com `env-ssm` e `AWS_ENV_PATH`.
-- Identidade do agente: um usuário IAM `vps-agent-<host>` por VPS, na conta heronlabs (`088132334646`). A policy dele tem uma permissão só: `sts:AssumeRole` em `arn:aws:iam::*:role/vps-agent-secrets-reader`. Ele não lê SSM direto, nem na própria heronlabs.
+- Identidade do agente: um usuário IAM `vps-agent-<host>` por VPS, na conta heronlabs (`088132334646`). A policy dele tem uma permissão só: `sts:AssumeRole` em `arn:aws:iam::*:role/vps-agent-secrets-reader`. Ele não lê SSM direto, nem na própria heronlabs. O `UserModule` do `cloud-iac` não fixa o nome físico: o Pulumi cria o usuário como `user-vps-agent-<host>-<sufixo aleatório>`, e é por isso que o padrão da trust abaixo começa com `user-`.
 - Em cada conta que hospeda cliente, a heronlabs inclusive, existe o role `vps-agent-secrets-reader`:
   - permissão: `ssm:GetParameters` numa lista explícita de ARNs por cliente, nunca um prefixo amplo. Para o `cms-heronlabs`:
 
@@ -232,14 +232,14 @@ Mapeamento para a API do Easypanel (nomes de procedure confirmados na captura da
     ```
 
     Do `/server-cms/` só o `DATABASE_URL`: o resto do env da API fica fora do alcance do agente. Todos os parâmetros usam a chave gerenciada `aws/ssm`, cuja key policy já libera o decrypt via SSM; o role não tem permissão de KMS. Chave KMS própria fica fora da v1;
-  - trust policy: `Principal: {"AWS": "arn:aws:iam::088132334646:root"}` com `ArnLike aws:PrincipalArn = arn:aws:iam::088132334646:user/vps-agent-*` (a AWS não aceita wildcard direto em `Principal`) e `StringEquals sts:ExternalId` igual ao slug do cliente daquela conta (lista, se a conta tem mais de um cliente);
+  - trust policy: `Principal: {"AWS": "arn:aws:iam::088132334646:root"}` com `ArnLike aws:PrincipalArn = arn:aws:iam::088132334646:user/user-vps-agent-*` (a AWS não aceita wildcard direto em `Principal`) e `StringEquals sts:ExternalId` igual ao slug do cliente daquela conta (lista, se a conta tem mais de um cliente);
   - duração máxima de sessão de 1 h; o agente pede 15 min.
 - A autorização exige os dois lados: a policy do usuário libera o assume e a trust do role aceita. Mesma regra dentro da heronlabs e entre contas.
 - `ExternalId` é uma string que quem chama `AssumeRole` é obrigado a mandar e que a trust policy confere. Aqui ele é o slug do cliente no CMS (ex.: `cms-heronlabs`): a trust do role exige esse valor e o agente manda o `slug` do cliente que está reconciliando, lido do manifesto. Não é segredo; impede que o manifesto de um cliente aponte para o role de outro, porque a trust da outra conta exige outro slug. Slug renomeado no CMS sem atualizar `externalIds` no tenant faz o `AssumeRole` ser negado: o projeto fica `failed` e o `doctor` acusa.
 - Entre contas, o `ExternalId` isola os clientes. Dentro de uma mesma conta com mais de um cliente, o role é um só e a lista dele soma os parâmetros de todos; o isolamento entre esses clientes depende só de quem edita o manifesto no CMS. Hoje cada conta tem um cliente; se uma conta passar a ter vários e isso importar, o caminho é um role por cliente (`vps-agent-secrets-reader-<slug>`), cada um com a sua lista.
 - O que vaza em cada caso:
   - `AGENT_TOKEN` (CMS) vazado: só nomes de parâmetro e ARNs de role, nenhum valor;
-  - access key do `vps-agent-<host>` vazada: os parâmetros listados nos roles das contas que confiam no padrão `vps-agent-*`. Equivale a perder o host, cujo Easypanel já guarda esses valores em texto puro. Revogar é desativar a key na heronlabs, sem tocar nas contas dos clientes;
+  - access key do `vps-agent-<host>` vazada: os parâmetros listados nos roles das contas que confiam no padrão `user-vps-agent-*`. Equivale a perder o host, cujo Easypanel já guarda esses valores em texto puro. Revogar é desativar a key na heronlabs, sem tocar nas contas dos clientes;
   - edição maliciosa no CMS: pode criar, num cliente, um serviço com imagem própria e apontar para segredo do mesmo cliente. É o mesmo risco que a imagem vinda do manifesto já tem (ver _Fora de escopo_).
 - Rotação: o agente nunca sobrescreve valor presente. Para rotacionar na v1, o operador atualiza o parâmetro no SSM e apaga a chave no painel; o reconcile seguinte grava o valor novo.
 - Configuração local em `/etc/vps-agent/config.env`, `root:root 0600`: `CMS_URL`, `AGENT_TOKEN`, `AGENT_HOST_NAME`, `EASYPANEL_URL` (padrão `http://127.0.0.1:3000`), `EASYPANEL_TOKEN`, `AWS_ACCESS_KEY_ID` e `AWS_SECRET_ACCESS_KEY` (do `vps-agent-<host>`), `AWS_REGION` (padrão `us-east-1`), `RECONCILE_INTERVAL` (padrão `5m`), `REPORT_INTERVAL` (padrão `10m`). O agente lê as chaves AWS só desse arquivo, nunca de `~/.aws` nem de metadata de instância. Formato `KEY=VALUE`, uma por linha; linhas vazias e `#` ignoradas; espaços em volta da chave e do valor, `\r` de fim de linha e um par de aspas duplas em volta do valor são descartados; chave desconhecida ou repetida recusa o arquivo. Cada subcomando valida só o que usa: `report --once` não exige nada do CMS, do Easypanel nem da AWS; `plan` exige CMS e Easypanel; `run` exige tudo.
@@ -297,7 +297,7 @@ Makefile
 - Um módulo Go só (`github.com/heronlabs/vps-agent`), com um `go.mod` na raiz.
 - CLI com o `flag` da biblioteca padrão, um `FlagSet` por subcomando; sem `cobra`.
 - Subcomandos: `vps-agent run` (o serviço), `vps-agent plan`, `vps-agent report --once` (coleta e imprime, sem enviar), `vps-agent doctor`, `vps-agent version`.
-- `doctor` verifica, em ordem e parando no primeiro erro: config válida, `docker.sock` acessível, Easypanel alcançável e na versão suportada, token do Easypanel aceito, CMS alcançável, token aceito e host conhecido (manifesto `200`), chaves AWS aceitas (`sts:GetCallerIdentity` devolve `user/vps-agent-*`) e, para cada cliente do manifesto com `secretsRoleArn`, `AssumeRole` aceito. O `doctor` não lê parâmetro nenhum.
+- `doctor` verifica, em ordem e parando no primeiro erro: config válida, `docker.sock` acessível, Easypanel alcançável e na versão suportada, token do Easypanel aceito, CMS alcançável, token aceito e host conhecido (manifesto `200`), chaves AWS aceitas (`sts:GetCallerIdentity` devolve `user/user-vps-agent-*`) e, para cada cliente do manifesto com `secretsRoleArn`, `AssumeRole` aceito. O `doctor` não lê parâmetro nenhum.
 - Logs: JSON em stdout (journald), `log/slog`, com o padrão `logId` da org (`<domínio>.<evento>`, campos planos, erro com `errorName`/`errorMessage` redigidos, nunca token nem valor de env).
 
 ## Convenções de código
@@ -509,7 +509,7 @@ Entregues antes da fase 3, cada uma por `/supera:ship` no repositório dela:
   - name: vps-agent-secrets-reader
     trust:
       accountId: '088132334646'
-      principalArnLike: arn:aws:iam::088132334646:user/vps-agent-*
+      principalArnLike: arn:aws:iam::088132334646:user/user-vps-agent-*
       externalIds: [cms-heronlabs]
     statements:
       - name: ssm
