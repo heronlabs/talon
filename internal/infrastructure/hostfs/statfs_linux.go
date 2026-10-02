@@ -18,6 +18,6 @@ func (StatFS) Stat(path string) (total, used domain.Bytes, err error) {
 	if err := syscall.Statfs(path, &st); err != nil {
 		return 0, 0, fmt.Errorf("statfs %s: %w", path, err)
 	}
-	block := domain.Bytes(st.Bsize)
+	block := domain.BytesOf(st.Bsize)
 	return domain.Bytes(st.Blocks) * block, domain.Bytes(st.Blocks-st.Bfree) * block, nil
 }

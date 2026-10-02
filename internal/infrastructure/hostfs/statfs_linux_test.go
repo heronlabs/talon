@@ -20,8 +20,8 @@ func statfsOracle(t *testing.T, path string) usage {
 	var st syscall.Statfs_t
 	testkit.MustDo(t, syscall.Statfs(path, &st))
 	return usage{
-		Total: domain.Bytes(st.Blocks) * domain.Bytes(st.Bsize),
-		Used:  domain.Bytes(st.Blocks-st.Bfree) * domain.Bytes(st.Bsize),
+		Total: domain.Bytes(st.Blocks) * domain.BytesOf(st.Bsize),
+		Used:  domain.Bytes(st.Blocks-st.Bfree) * domain.BytesOf(st.Bsize),
 	}
 }
 

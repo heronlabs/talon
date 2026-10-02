@@ -4,3 +4,7 @@ coverage.filtered.out
 reports/
 .DS_Store
 dist/
+docs/
+.superpowers/
+.supera/
+.worktrees/
