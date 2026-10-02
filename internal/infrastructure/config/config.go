@@ -134,10 +134,19 @@ func (f File) Validate() error {
 	return err
 }
 
-// HostNameOr returns AGENT_HOST_NAME when the file loads and sets it, and fallback() otherwise.
+// HostNameOr returns AGENT_HOST_NAME, and fallback() when the file does not exist or leaves the
+// name unset. Any other problem with the file is an error, so a broken config never reports
+// under the machine's own name.
 func (f File) HostNameOr(fallback func() (string, error)) (string, error) {
-	if cfg, err := Load(f.Dir, f.Name); err == nil && cfg.HostName != "" {
-		return cfg.HostName, nil
+	cfg, err := Load(f.Dir, f.Name)
+	if errors.Is(err, fs.ErrNotExist) {
+		return fallback()
 	}
-	return fallback()
+	if err != nil {
+		return "", err
+	}
+	if cfg.HostName == "" {
+		return fallback()
+	}
+	return cfg.HostName, nil
 }

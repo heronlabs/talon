@@ -65,15 +65,16 @@ func useCase(t *testing.T, socket string, out io.Writer) *report.UseCase {
 		"loadavg": {Data: testkit.Must(os.ReadFile("testdata/proc/loadavg"))},
 		"uptime":  {Data: testkit.Must(os.ReadFile("testdata/proc/uptime"))},
 	}
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 	return report.New(report.Deps{
 		Host:         "vps-heron-02",
 		AgentVersion: "1.0.0",
 		Clock:        fake.Clock{T: time.Date(2026, 10, 1, 14, 10, 0, 0, time.UTC)},
 		Metrics:      hostfs.NewMetrics(proc, fixedDisk{}),
-		Docker:       docker.NewUnix(socket, time.Second, time.Second),
+		Docker:       docker.NewUnix(socket, time.Second, time.Second, logger),
 		Dirs:         fake.DirSizer{Sizes: map[string]domain.Bytes{"/etc/easypanel/projects/cms-heronlabs/cms-database/backups": 1_000_000}},
 		Sink:         cms.NewPrinter(out),
-		Logger:       slog.New(slog.NewJSONHandler(io.Discard, nil)),
+		Logger:       logger,
 	})
 }
 

@@ -204,3 +204,15 @@ func TestHostNameOr_FallsBackWhenFileIsMissing(t *testing.T) {
 
 	testkit.ErrorIs(t, err, errFallback)
 }
+
+func TestHostNameOr_FailsOnInvalidFile(t *testing.T) {
+	_, err := config.File{Dir: dir("NOPE=1\n", 0o600), Name: "config.env"}.HostNameOr(hostname)
+
+	testkit.ErrorIs(t, err, config.ErrInvalid)
+}
+
+func TestHostNameOr_FailsOnWrongMode(t *testing.T) {
+	_, err := config.File{Dir: dir(full, 0o644), Name: "config.env"}.HostNameOr(hostname)
+
+	testkit.ErrorIs(t, err, config.ErrInvalid)
+}

@@ -1,10 +1,12 @@
 package docker_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"maps"
 	"net"
 	"net/http"
@@ -58,7 +60,9 @@ func routes(overrides map[string]string) map[string]string {
 	return r
 }
 
-func client(t *testing.T, r map[string]string, statsTimeout time.Duration) *docker.Client {
+var discard = slog.New(slog.DiscardHandler)
+
+func server(t *testing.T, r map[string]string) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		body, ok := r[req.URL.RequestURI()]
@@ -69,7 +73,13 @@ func client(t *testing.T, r map[string]string, statsTimeout time.Duration) *dock
 		_, _ = io.WriteString(w, body)
 	}))
 	t.Cleanup(srv.Close)
-	return docker.New(srv.Client(), srv.URL, statsTimeout)
+	return srv
+}
+
+func client(t *testing.T, r map[string]string, statsTimeout time.Duration) *docker.Client {
+	t.Helper()
+	srv := server(t, r)
+	return docker.New(srv.Client(), srv.URL, statsTimeout, discard)
 }
 
 func snapshot(t *testing.T, overrides map[string]string) (domain.DockerSample, error) {
@@ -97,7 +107,7 @@ func TestPing_FailsOnNonOKStatus(t *testing.T) {
 
 func TestPing_FailsWhenEngineIsUnreachable(t *testing.T) {
 	srv := httptest.NewServer(http.NotFoundHandler())
-	c := docker.New(srv.Client(), srv.URL, time.Second)
+	c := docker.New(srv.Client(), srv.URL, time.Second, discard)
 	srv.Close()
 
 	err := c.Ping(context.Background())
@@ -108,7 +118,7 @@ func TestPing_FailsWhenEngineIsUnreachable(t *testing.T) {
 func TestPing_FailsOnInvalidBaseURL(t *testing.T) {
 	var urlErr *url.Error
 
-	err := docker.New(http.DefaultClient, "http://bad host", time.Second).Ping(context.Background())
+	err := docker.New(http.DefaultClient, "http://bad host", time.Second, discard).Ping(context.Background())
 
 	testkit.Equal(t, true, errors.As(err, &urlErr))
 }
@@ -124,7 +134,7 @@ func TestNewUnix_TalksThroughTheSocket(t *testing.T) {
 	go func() { _ = srv.Serve(ln) }()
 	t.Cleanup(func() { _ = srv.Close() })
 
-	err := docker.NewUnix(socket, time.Second, time.Second).Ping(context.Background())
+	err := docker.NewUnix(socket, time.Second, time.Second, discard).Ping(context.Background())
 
 	testkit.ErrorIs(t, err, nil)
 }
@@ -166,7 +176,7 @@ func TestSnapshot_FailsWhenNodeIsNotASwarmManager(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	_, err := docker.New(srv.Client(), srv.URL, time.Second).Snapshot(context.Background())
+	_, err := docker.New(srv.Client(), srv.URL, time.Second, discard).Snapshot(context.Background())
 
 	testkit.ErrorIs(t, err, docker.ErrUnexpectedStatus)
 }
@@ -191,6 +201,27 @@ func TestSnapshot_FailedStatsLeaveStatsEmpty(t *testing.T) {
 	testkit.Equal(t, (*domain.ContainerStats)(nil), got.Containers[0].Stats)
 }
 
+func TestSnapshot_LogsFailedStats(t *testing.T) {
+	logs := &bytes.Buffer{}
+	srv := server(t, routes(map[string]string{statsPath: ""}))
+	logger := slog.New(slog.NewJSONHandler(logs, &slog.HandlerOptions{
+		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
+			if a.Key == slog.TimeKey {
+				return slog.Attr{}
+			}
+			return a
+		},
+	}))
+	c := docker.New(srv.Client(), srv.URL, time.Second, logger)
+
+	_ = testkit.Must(c.Snapshot(context.Background()))
+
+	testkit.Equal(t,
+		`{"level":"WARN","msg":"container stats unavailable","logId":"docker.stats-failed","containerId":"c1",`+
+			`"errorName":"*fmt.wrapError","errorMessage":"unexpected docker status: GET /containers/c1/stats?stream=false: 404"}`+"\n",
+		logs.String())
+}
+
 func TestSnapshot_SlowStatsLeaveStatsEmpty(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if req.URL.RequestURI() == statsPath {
@@ -200,7 +231,7 @@ func TestSnapshot_SlowStatsLeaveStatsEmpty(t *testing.T) {
 		_, _ = io.WriteString(w, baseRoutes[req.URL.RequestURI()])
 	}))
 	t.Cleanup(srv.Close)
-	c := docker.New(srv.Client(), srv.URL, 20*time.Millisecond)
+	c := docker.New(srv.Client(), srv.URL, 20*time.Millisecond, discard)
 
 	got := testkit.Must(c.Snapshot(context.Background()))
 

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"sync"
@@ -22,23 +23,25 @@ type Client struct {
 	http         *http.Client
 	baseURL      string
 	statsTimeout time.Duration
+	logger       *slog.Logger
 }
 
-// New builds a Client over any HTTP client; baseURL has no trailing slash.
-func New(httpClient *http.Client, baseURL string, statsTimeout time.Duration) *Client {
-	return &Client{http: httpClient, baseURL: baseURL, statsTimeout: statsTimeout}
+// New builds a Client over any HTTP client; baseURL has no trailing slash. logger records the
+// containers whose stats could not be read.
+func New(httpClient *http.Client, baseURL string, statsTimeout time.Duration, logger *slog.Logger) *Client {
+	return &Client{http: httpClient, baseURL: baseURL, statsTimeout: statsTimeout, logger: logger}
 }
 
 // NewUnix builds a Client that dials the engine's unix socket. requestTimeout bounds every
 // call; statsTimeout bounds each container's stats, which take about a second.
-func NewUnix(socketPath string, requestTimeout, statsTimeout time.Duration) *Client {
+func NewUnix(socketPath string, requestTimeout, statsTimeout time.Duration, logger *slog.Logger) *Client {
 	transport := &http.Transport{
 		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 			var d net.Dialer
 			return d.DialContext(ctx, "unix", socketPath)
 		},
 	}
-	return New(&http.Client{Transport: transport, Timeout: requestTimeout}, "http://docker", statsTimeout)
+	return New(&http.Client{Transport: transport, Timeout: requestTimeout}, "http://docker", statsTimeout, logger)
 }
 
 // Ping implements port.Docker.
@@ -50,7 +53,8 @@ func (c *Client) Ping(ctx context.Context) error {
 	return resp.Body.Close()
 }
 
-// Snapshot implements port.Docker. A container whose stats fail or time out has nil Stats.
+// Snapshot implements port.Docker. A container whose stats fail or time out has nil Stats and
+// is logged.
 func (c *Client) Snapshot(ctx context.Context) (domain.DockerSample, error) {
 	var (
 		services   []serviceDTO
@@ -93,6 +97,11 @@ func (c *Client) stats(ctx context.Context, id string) *domain.ContainerStats {
 	defer cancel()
 	var s statsDTO
 	if err := c.getJSON(ctx, "/containers/"+id+"/stats?stream=false", &s); err != nil {
+		c.logger.WarnContext(ctx, "container stats unavailable",
+			slog.String("logId", "docker.stats-failed"),
+			slog.String("containerId", id),
+			slog.String("errorName", fmt.Sprintf("%T", err)),
+			slog.String("errorMessage", err.Error()))
 		return nil
 	}
 	stats := s.toDomain()

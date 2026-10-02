@@ -74,4 +74,6 @@ if [ ! -f "$CONFIG_FILE" ]; then
 fi
 
 echo "install: vps-agent $version at $BIN"
+# exec replaces the shell, so the EXIT trap never runs on this path.
+rm -rf "$work"
 exec "$BIN" doctor

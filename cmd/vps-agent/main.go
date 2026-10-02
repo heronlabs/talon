@@ -85,7 +85,7 @@ func runReport(ctx context.Context, args []string, stdout, stderr io.Writer) int
 		AgentVersion: version,
 		Clock:        clock.System{},
 		Metrics:      hostfs.NewMetrics(os.DirFS("/proc"), hostfs.StatFS{}),
-		Docker:       docker.NewUnix(dockerSocket, dockerTimeout, statsTimeout),
+		Docker:       docker.NewUnix(dockerSocket, dockerTimeout, statsTimeout, logger),
 		Dirs:         hostfs.DirSizer{},
 		Sink:         cms.NewPrinter(stdout),
 		Logger:       logger,
@@ -106,7 +106,7 @@ func runDoctor(ctx context.Context, args []string, stdout, stderr io.Writer) int
 	}
 	results := doctor.Run(ctx,
 		doctor.ConfigCheck(configFile(*configPath)),
-		doctor.DockerCheck(docker.NewUnix(dockerSocket, dockerTimeout, statsTimeout)),
+		doctor.DockerCheck(docker.NewUnix(dockerSocket, dockerTimeout, statsTimeout, slog.New(slog.NewJSONHandler(stderr, nil)))),
 	)
 	for _, r := range results {
 		if r.Err != nil {
