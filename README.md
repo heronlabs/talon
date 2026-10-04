@@ -1,3 +1,7 @@
+<p align="center">
+  <img src=".github/assets/logo.png" alt="talon" width="160">
+</p>
+
 # talon
 
 The Heron Labs agent for Easypanel hosts. A static Go binary with two commands.
