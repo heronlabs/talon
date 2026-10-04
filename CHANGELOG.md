@@ -1,3 +1,9 @@
+## v0.1.1 (2026-10-04)
+
+### Miscellaneous Chores
+
+* other: Remove unused testkit and testshape components; add application command structure (120e084c5b7e17eee2c94e694848030d275ff027)
+
 ## v0.1.0 (2026-10-02)
 
 ### Features
