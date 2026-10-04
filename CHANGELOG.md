@@ -1,3 +1,9 @@
+## v0.2.1 (2026-10-04)
+
+### Miscellaneous Chores
+
+* other: add lint and audit make targets and CI jobs (#3) (2034285d51ee7114a23c914fb996879622745169)
+
 ## v0.2.0 (2026-10-04)
 
 ### Features
