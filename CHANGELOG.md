@@ -1,3 +1,9 @@
+## v0.2.0 (2026-10-04)
+
+### Features
+
+* feat: implement DoctorCommand with validation for .env file permissions (328907206228aa86d7f6371f62843ced7b29f3ae)
+
 ## v0.1.1 (2026-10-04)
 
 ### Miscellaneous Chores
