@@ -8,13 +8,18 @@ Expect a response within 72 hours. After triage we will keep you updated on prog
 
 ## Scope
 
-`talon` runs as root on Easypanel hosts. It handles:
+`talon` runs as root on Easypanel hosts. Today it handles:
 
 - the Docker socket, which is equivalent to root on the host;
-- `/etc/talon/config.env` (mode 0600) with the CMS, Easypanel and AWS credentials of the host;
-- the release download token used by `scripts/install.sh`.
+- the `.env` file in its working directory, which `talon doctor` refuses unless its mode is `600`.
 
-Key concerns: credential exposure in logs or reports, integrity of the released binary (`checksums.txt`), and anything that would let a CMS manifest make the agent read or write beyond its host.
+As the planned commands arrive it will also handle:
+
+- the CMS, Easypanel and cloud credentials of the host, kept in that `.env`;
+- client secrets read from each client's own secret store, which pass through the agent on their way to Easypanel and are never sent to the CMS;
+- release downloads, accepted only when their signature and checksum match.
+
+Key concerns: a credential or an environment value showing up in logs or reports, the integrity of the binary a host installs, and anything that would let a CMS manifest make the agent read, write or delete beyond what it manages on its own host.
 
 ### Supported versions
 
