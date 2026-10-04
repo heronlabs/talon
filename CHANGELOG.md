@@ -1,3 +1,9 @@
+## v0.3.1 (2026-10-04)
+
+### Miscellaneous Chores
+
+* other: rename project to talon and rewrite docs (#6) (88daf14904e0041a017b884f321616a4d7bd2545)
+
 ## v0.3.0 (2026-10-04)
 
 ### Features
