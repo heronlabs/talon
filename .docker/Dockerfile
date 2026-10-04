@@ -3,7 +3,7 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY src ./src
-RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/vps-agent ./src
+RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/talon ./src
 
 # Fake VPS: Ubuntu 22.04 with systemd as PID 1, Docker Engine and Easypanel.
 # Easypanel is installed on first boot by easypanel-setup.service, because its
@@ -25,10 +25,10 @@ RUN echo "EASYPANEL_VERSION=${EASYPANEL_VERSION}" > /etc/default/easypanel-setup
 COPY .docker/fake_vps/easypanel_setup.sh /usr/local/sbin/easypanel-setup
 COPY .docker/fake_vps/easypanel_setup.service /etc/systemd/system/easypanel-setup.service
 RUN systemctl enable easypanel-setup.service
-COPY --from=build /out/vps-agent /usr/local/bin/vps-agent
-COPY version.txt /opt/vps-agent/version.txt
-WORKDIR /opt/vps-agent
+COPY --from=build /out/talon /usr/local/bin/talon
+COPY version.txt /opt/talon/version.txt
+WORKDIR /opt/talon
 # bin/ is bind-mounted from the host by `make watch`; it shadows the baked binary.
-ENV PATH=/opt/vps-agent/bin:$PATH
+ENV PATH=/opt/talon/bin:$PATH
 STOPSIGNAL SIGRTMIN+3
 CMD ["/sbin/init"]

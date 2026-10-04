@@ -5,8 +5,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/heronlabs/vps-agent/src/application"
-	"github.com/heronlabs/vps-agent/src/infrastructure/docker"
+	"github.com/heronlabs/talon/src/application"
+	"github.com/heronlabs/talon/src/infrastructure/docker"
 )
 
 func main() {

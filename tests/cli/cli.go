@@ -1,6 +1,6 @@
 //go:build integration
 
-// Package cli runs the vps-agent binary built by `make test:integration`, so
+// Package cli runs the talon binary built by `make test:integration`, so
 // integration test packages can exercise the real CLI.
 package cli
 
@@ -11,13 +11,13 @@ import (
 	"testing"
 )
 
-// Run runs the binary at VPS_AGENT_BIN inside dir and returns its combined
+// Run runs the binary at TALON_BIN inside dir and returns its combined
 // output and exit code.
 func Run(t *testing.T, dir string, args ...string) (string, int) {
 	t.Helper()
-	binPath := os.Getenv("VPS_AGENT_BIN")
+	binPath := os.Getenv("TALON_BIN")
 	if binPath == "" {
-		t.Fatal("VPS_AGENT_BIN is not set: run `make test:integration`")
+		t.Fatal("TALON_BIN is not set: run `make test:integration`")
 	}
 
 	cmd := exec.Command(binPath, args...) //nolint:gosec // G204: test harness runs the binary built by `make test:integration`

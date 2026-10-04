@@ -1,27 +1,49 @@
-# vps-agent
+<p align="center">
+  <img src=".github/assets/logo.png" alt="talon" width="160">
+</p>
 
-Agent for Heron Labs Easypanel hosts. It runs on the host as a static binary and only makes outbound connections.
+# talon
 
-Today (phase 1) it measures the host (memory, swap, disk, load, uptime) and every Easypanel service (state, replicas, memory, CPU, disk, network, block I/O) and prints the report the CMS will receive. Sending the report and reconciling Easypanel from the CMS come in the next phases; see `docs/superpowers/specs/2026-10-01-vps-agent-design.md`.
+The Heron Labs agent for Easypanel hosts. A static Go binary with two commands.
 
-## Install or update on a VPS
+## Commands
 
-```bash
-curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/octet-stream" \
-  "<install.sh asset URL of the release>" -o install.sh
-sudo GITHUB_TOKEN=... AGENT_HOST_NAME=<infra-host name> bash install.sh
-```
+| Command | What it does |
+|---|---|
+| `talon version` | Prints the version read from `version.txt`, or `0.0.0` when the file cannot be read. |
+| `talon doctor` | Checks that `.env` exists with mode `600` and that the Docker Engine answers `GET /_ping` on its socket within 5 seconds. |
 
-`GITHUB_TOKEN` is a fine-grained token with `Contents: read` on this repository. The script verifies the sha256, installs `/usr/local/bin/vps-agent`, writes `/etc/vps-agent/config.env` (0600) only on the first install and runs `vps-agent doctor`.
+Any other command, or none, is an error.
 
 ## Use
 
 ```bash
-sudo vps-agent version
-sudo vps-agent doctor          # config and Docker socket
-sudo vps-agent report --once   # print one report as JSON
+talon version
+talon doctor
 ```
+
+Both commands read from the working directory: `version` reads `version.txt` and `doctor` reads `.env`. `doctor` talks to the Docker Engine at `/var/run/docker.sock`; set `DOCKER_SOCKET` to use another socket.
+
+Each command logs one line with its result and exits `0` on success or `1` on failure:
+
+```text
+2026/10/04 20:05:40 INFO version version=0.3.0
+2026/10/04 20:05:40 INFO doctor status=ok
+2026/10/04 20:05:40 ERROR doctor error="config: .env has mode 644, want 600"
+2026/10/04 20:05:40 ERROR command not found command=foo
+```
+
+## Releases
+
+A release is a tag with a changelog. No binary is published; build it from this repository.
 
 ## Develop
 
-See `CONTRIBUTING.md` and `AGENTS.md`.
+```bash
+make build              # static binary in bin/talon
+make test               # unit tests with coverage
+make test:integration   # runs the real binary against a fake Docker Engine
+make up                 # fake VPS: Ubuntu, systemd, Docker and Easypanel in a container
+```
+
+`CONTRIBUTING.md` has the setup and the workflow. `AGENTS.md` has the code map and the conventions.

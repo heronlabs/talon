@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io/fs"
 
-	"github.com/heronlabs/vps-agent/src/infrastructure/docker"
+	"github.com/heronlabs/talon/src/infrastructure/docker"
 )
 
 type DoctorCommand struct {

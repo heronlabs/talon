@@ -1,4 +1,4 @@
-name: vps-agent
+name: talon
 
 services:
   fake-vps:
@@ -15,7 +15,7 @@ services:
       - docker:/var/lib/docker
       - containerd:/var/lib/containerd
       - easypanel:/etc/easypanel
-      - ../bin/linux:/opt/vps-agent/bin:ro
+      - ../bin/linux:/opt/talon/bin:ro
     ports:
       - "3000:3000"
 

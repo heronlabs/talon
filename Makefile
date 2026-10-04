@@ -1,12 +1,12 @@
 VERSION ?= 0.0.0-dev
 GOOS ?= $(shell go env GOOS)
 GOARCH ?= $(shell go env GOARCH)
-BIN ?= bin/vps-agent
+BIN ?= bin/talon
 COMPOSE = docker compose -f .docker/compose.yaml
 UNIT_COVERPKG = $(shell go list ./src/... | grep -v '/src$$' | paste -sd, -)
 UNIT_COVERAGE = .coverage/unit
 INTEGRATION_COVERAGE = .coverage/integration
-INTEGRATION_BIN = bin/integration/vps-agent
+INTEGRATION_BIN = bin/integration/talon
 MUTATION_REPORT = .coverage/mutation
 
 .PHONY: build up down watch lint lint\:fix audit test test\:integration test\:mutation
@@ -46,7 +46,7 @@ test:
 test\:integration:
 	rm -rf $(INTEGRATION_COVERAGE) && mkdir -p $(INTEGRATION_COVERAGE)/covdata
 	go build -cover -covermode=atomic -coverpkg=./src/... -o $(INTEGRATION_BIN) ./src
-	VPS_AGENT_BIN=$(CURDIR)/$(INTEGRATION_BIN) GOCOVERDIR=$(CURDIR)/$(INTEGRATION_COVERAGE)/covdata \
+	TALON_BIN=$(CURDIR)/$(INTEGRATION_BIN) GOCOVERDIR=$(CURDIR)/$(INTEGRATION_COVERAGE)/covdata \
 		go test -race -count=1 -tags integration ./tests/...
 	go tool covdata textfmt -i=$(INTEGRATION_COVERAGE)/covdata -o $(INTEGRATION_COVERAGE)/coverage.out
 	go tool cover -func=$(INTEGRATION_COVERAGE)/coverage.out
