@@ -3,8 +3,10 @@ package main
 import (
 	"log/slog"
 	"os"
+	"time"
 
 	"github.com/heronlabs/vps-agent/src/application"
+	"github.com/heronlabs/vps-agent/src/infrastructure/docker"
 )
 
 func main() {
@@ -17,6 +19,19 @@ func main() {
 	case "version":
 		versionCommand := application.NewVersionCommand(os.DirFS("."))
 		slog.Info("version", "version", versionCommand.GetTxtVersion())
+	case "doctor":
+		socketPath := os.Getenv("DOCKER_SOCKET")
+		if socketPath == "" {
+			socketPath = "/var/run/docker.sock"
+		}
+
+		doctorCommand := application.NewDoctorCommand(os.DirFS("."), docker.NewHealthCheckService(socketPath, 5*time.Second))
+		if err := doctorCommand.Run(); err != nil {
+			slog.Error("doctor", "error", err)
+			os.Exit(1)
+		}
+
+		slog.Info("doctor", "status", "ok")
 	default:
 		slog.Error("command not found", "command", command)
 		os.Exit(1)

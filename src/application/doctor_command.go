@@ -3,14 +3,17 @@ package application
 import (
 	"fmt"
 	"io/fs"
+
+	"github.com/heronlabs/vps-agent/src/infrastructure/docker"
 )
 
 type DoctorCommand struct {
-	fsys fs.FS
+	fsys        fs.FS
+	healthCheck docker.HealthCheck
 }
 
-func NewDoctorCommand(fsys fs.FS) *DoctorCommand {
-	return &DoctorCommand{fsys: fsys}
+func NewDoctorCommand(fsys fs.FS, healthCheck docker.HealthCheck) *DoctorCommand {
+	return &DoctorCommand{fsys: fsys, healthCheck: healthCheck}
 }
 
 func (c *DoctorCommand) Run() error {
@@ -21,6 +24,10 @@ func (c *DoctorCommand) Run() error {
 
 	if perm := info.Mode().Perm(); perm != 0o600 {
 		return fmt.Errorf("config: .env has mode %o, want 600", perm)
+	}
+
+	if err := c.healthCheck.Ping(); err != nil {
+		return fmt.Errorf("docker: %w", err)
 	}
 
 	return nil
