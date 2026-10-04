@@ -89,3 +89,46 @@ jobs:
           go-version-file: go.mod
 
       - run: make test:integration
+
+  mutation:
+    needs: unit
+    name: 'Mutation Tests'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - run: make test:mutation
+
+      - name: Mutation summary
+        if: always()
+        run: |
+          report=.coverage/mutation/mutation.json
+          {
+            echo "### Mutation testing"
+            echo '```'
+            if [ -s "$report" ]; then
+              jq -r '
+                def pct: . * 100 | round / 100;
+                "Mutation score: \(.test_efficacy | pct)%",
+                "Mutator coverage: \(.mutations_coverage | pct)%",
+                "Killed: \(.mutants_killed), Lived: \(.mutants_lived), Not covered: \(.mutants_not_covered), Total: \(.mutants_total)"
+              ' "$report"
+            else
+              echo "mutation report not found"
+            fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - if: always()
+        name: Upload mutation reports
+        uses: actions/upload-artifact@v7
+        with:
+          name: mutation-reports
+          path: .coverage/mutation/
+          include-hidden-files: true
+          retention-days: 14
+          if-no-files-found: warn
