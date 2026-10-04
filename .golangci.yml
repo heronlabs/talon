@@ -17,37 +17,20 @@ linters:
   settings:
     depguard:
       rules:
-        domain:
-          files: ["**/internal/core/domain/**", "!$test"]
+        core:
+          files: ["**/src/core/**", "!$test"]
           deny:
-            - pkg: github.com/heronlabs/vps-agent/internal
-              desc: domain imports nothing internal
-        port:
-          files: ["**/internal/core/port/**", "!$test"]
-          deny:
-            - pkg: github.com/heronlabs/vps-agent/internal/core/usecase
-              desc: port imports only domain
-            - pkg: github.com/heronlabs/vps-agent/internal/infrastructure
-              desc: port imports only domain
-        usecase:
-          files: ["**/internal/core/usecase/**", "!$test"]
-          deny:
-            - pkg: github.com/heronlabs/vps-agent/internal/infrastructure
-              desc: use cases reach the outside world only through ports
+            - pkg: github.com/heronlabs/vps-agent/src/application
+              desc: core imports nothing from application
+            - pkg: github.com/heronlabs/vps-agent/src/infrastructure
+              desc: core imports nothing from infrastructure
         infrastructure:
-          files: ["**/internal/infrastructure/**", "!$test"]
+          files: ["**/src/infrastructure/**", "!$test"]
           deny:
-            - pkg: github.com/heronlabs/vps-agent/internal/core/usecase
-              desc: adapters never import use cases
-        testkit:
-          files: ["!$test", "!**/internal/testkit/**", "!**/test/integration/**"]
-          deny:
-            - pkg: github.com/heronlabs/vps-agent/internal/testkit
-              desc: testkit is for tests only
+            - pkg: github.com/heronlabs/vps-agent/src/application
+              desc: infrastructure never imports application
   exclusions:
     presets: [comments, std-error-handling]
-    paths:
-      - internal/tools/testshape/testdata
 
 formatters:
   enable: [gofmt, goimports]

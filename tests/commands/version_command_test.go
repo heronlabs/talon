@@ -14,7 +14,7 @@ import (
 func TestVersionCommand(t *testing.T) {
 	t.Run("Should print version from version.txt", func(t *testing.T) {
 		dir := t.TempDir()
-		if err := os.WriteFile(filepath.Join(dir, "version.txt"), []byte("1.2.3\n"), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, "version.txt"), []byte("1.2.3\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 
