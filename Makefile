@@ -9,7 +9,7 @@ UNIT_COVERAGE = .coverage/unit
 INTEGRATION_COVERAGE = .coverage/integration
 INTEGRATION_BIN = bin/integration/vps-agent
 
-.PHONY: build up down watch test test\:integration
+.PHONY: build up down watch lint lint\:fix audit test test\:integration
 
 build:
 	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build -trimpath \
@@ -24,6 +24,18 @@ down:
 
 watch:
 	go tool air
+
+lint:
+	golangci-lint run ./...
+	go tool actionlint
+	shellcheck .githooks/pre-commit .docker/fake_vps/easypanel_setup.sh
+	go mod tidy -diff
+
+lint\:fix:
+	golangci-lint run --fix ./...
+
+audit:
+	go tool govulncheck ./...
 
 test:
 	rm -rf $(UNIT_COVERAGE) && mkdir -p $(UNIT_COVERAGE)

@@ -20,7 +20,7 @@ func Run(t *testing.T, dir string, args ...string) (string, int) {
 		t.Fatal("VPS_AGENT_BIN is not set: run `make test:integration`")
 	}
 
-	cmd := exec.Command(binPath, args...)
+	cmd := exec.Command(binPath, args...) //nolint:gosec // G204: test harness runs the binary built by `make test:integration`
 	cmd.Dir = dir
 
 	out, err := cmd.CombinedOutput()

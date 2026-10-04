@@ -25,6 +25,35 @@ jobs:
 
       - run: make build
 
+  lint:
+    name: 'Lint'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.14.0
+          install-only: true
+
+      - run: make lint
+
+  audit:
+    name: 'Audit'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - run: make audit
+
   unit:
     needs: build
     name: 'Unit Tests'
