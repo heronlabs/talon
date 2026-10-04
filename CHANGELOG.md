@@ -1,3 +1,9 @@
+## v0.2.2 (2026-10-04)
+
+### Miscellaneous Chores
+
+* other: add mutation make target and CI job (#4) (6c390483e3f2a0cfe443eda18661d361efc7e299)
+
 ## v0.2.1 (2026-10-04)
 
 ### Miscellaneous Chores
