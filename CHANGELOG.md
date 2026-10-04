@@ -1,3 +1,9 @@
+## v0.3.0 (2026-10-04)
+
+### Features
+
+* feat: add Docker health check to doctor (#5) (b8deeab071b63325227e49bf2ce870cf285fadce)
+
 ## v0.2.2 (2026-10-04)
 
 ### Miscellaneous Chores
