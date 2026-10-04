@@ -3,13 +3,13 @@ GOOS ?= $(shell go env GOOS)
 GOARCH ?= $(shell go env GOARCH)
 BIN ?= bin/vps-agent
 COMPOSE = docker compose -f .docker/compose.yaml
-# Unit coverage skips package main (src/): the integration tests cover it.
 UNIT_COVERPKG = $(shell go list ./src/... | grep -v '/src$$' | paste -sd, -)
 UNIT_COVERAGE = .coverage/unit
 INTEGRATION_COVERAGE = .coverage/integration
 INTEGRATION_BIN = bin/integration/vps-agent
+MUTATION_REPORT = .coverage/mutation
 
-.PHONY: build up down watch lint lint\:fix audit test test\:integration
+.PHONY: build up down watch lint lint\:fix audit test test\:integration test\:mutation
 
 build:
 	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build -trimpath \
@@ -51,3 +51,7 @@ test\:integration:
 	go tool covdata textfmt -i=$(INTEGRATION_COVERAGE)/covdata -o $(INTEGRATION_COVERAGE)/coverage.out
 	go tool cover -func=$(INTEGRATION_COVERAGE)/coverage.out
 	go tool cover -html=$(INTEGRATION_COVERAGE)/coverage.out -o $(INTEGRATION_COVERAGE)/coverage.html
+
+test\:mutation:
+	rm -rf $(MUTATION_REPORT) && mkdir -p $(MUTATION_REPORT)
+	go tool gremlins unleash --output $(MUTATION_REPORT)/mutation.json -E '^main\.go$$' ./src
