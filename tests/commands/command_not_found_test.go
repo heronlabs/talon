@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/heronlabs/vps-agent/tests/cli"
+	"github.com/heronlabs/talon/tests/cli"
 )
 
 func TestCommandNotFound(t *testing.T) {

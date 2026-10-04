@@ -1,4 +1,4 @@
-module github.com/heronlabs/vps-agent
+module github.com/heronlabs/talon
 
 go 1.27.0
 

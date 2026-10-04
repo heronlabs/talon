@@ -1,4 +1,4 @@
-# vps-agent
+# talon
 
 Go agent that runs as a systemd service on an Easypanel VPS. Phase 1 (this release line) measures the host and every Swarm service and prints the CMS report contract; later phases send it to the CMS and reconcile Easypanel from a CMS manifest. Design: `docs/superpowers/specs/2026-10-01-vps-agent-design.md`.
 
@@ -10,7 +10,7 @@ Go agent that runs as a systemd service on an Easypanel VPS. Phase 1 (this relea
 | `internal/core/domain/` | Entities and pure rules (`BuildReport`, `BindMountPaths`). No I/O, no clock. |
 | `internal/core/port/` | Interfaces the use cases need: `HostMetrics`, `DirSizer`, `Docker`, `ReportSink`, `Clock`, `ConfigValidator`. |
 | `internal/core/usecase/` | `report` (collect and publish), `doctor` (ordered checks). |
-| `internal/infrastructure/` | Adapters: `hostfs` (/proc, statfs, dir sizes), `docker` (Engine API over the unix socket, no SDK), `cms` (contract DTOs, printer), `config` (`/etc/vps-agent/config.env`), `clock`. |
+| `internal/infrastructure/` | Adapters: `hostfs` (/proc, statfs, dir sizes), `docker` (Engine API over the unix socket, no SDK), `cms` (contract DTOs, printer), `config` (`/etc/talon/config.env`), `clock`. |
 | `internal/testkit/` | The only assertions (`Equal`, `ErrorIs`), setup helpers (`Must`, `MustDo`) and hand-written fakes (`fake/`). |
 | `internal/tools/testshape/` | Lint analyzer: one scenario and one assertion per test. |
 | `test/integration/` | End-to-end tests (`//go:build integration`) against a fake engine on a unix socket. |

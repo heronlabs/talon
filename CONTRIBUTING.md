@@ -13,7 +13,7 @@ Requires the Go toolchain in `go.mod` (fetched automatically), plus `golangci-li
 
 | Command | Purpose |
 |---------|---------|
-| `make build` | Build `bin/vps-agent` |
+| `make build` | Build `bin/talon` |
 | `make lint` | gofmt, vet, golangci-lint, testshape, tidy, shellcheck, actionlint |
 | `make test` | Unit tests, 100% coverage of `internal/` |
 | `make test-integration` | Integration tests |

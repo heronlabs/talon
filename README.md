@@ -1,4 +1,4 @@
-# vps-agent
+# talon
 
 Agent for Heron Labs Easypanel hosts. It runs on the host as a static binary and only makes outbound connections.
 
@@ -12,14 +12,14 @@ curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/octe
 sudo GITHUB_TOKEN=... AGENT_HOST_NAME=<infra-host name> bash install.sh
 ```
 
-`GITHUB_TOKEN` is a fine-grained token with `Contents: read` on this repository. The script verifies the sha256, installs `/usr/local/bin/vps-agent`, writes `/etc/vps-agent/config.env` (0600) only on the first install and runs `vps-agent doctor`.
+`GITHUB_TOKEN` is a fine-grained token with `Contents: read` on this repository. The script verifies the sha256, installs `/usr/local/bin/talon`, writes `/etc/talon/config.env` (0600) only on the first install and runs `talon doctor`.
 
 ## Use
 
 ```bash
-sudo vps-agent version
-sudo vps-agent doctor          # config and Docker socket
-sudo vps-agent report --once   # print one report as JSON
+sudo talon version
+sudo talon doctor          # config and Docker socket
+sudo talon report --once   # print one report as JSON
 ```
 
 ## Develop

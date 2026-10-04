@@ -20,14 +20,14 @@ linters:
         core:
           files: ["**/src/core/**", "!$test"]
           deny:
-            - pkg: github.com/heronlabs/vps-agent/src/application
+            - pkg: github.com/heronlabs/talon/src/application
               desc: core imports nothing from application
-            - pkg: github.com/heronlabs/vps-agent/src/infrastructure
+            - pkg: github.com/heronlabs/talon/src/infrastructure
               desc: core imports nothing from infrastructure
         infrastructure:
           files: ["**/src/infrastructure/**", "!$test"]
           deny:
-            - pkg: github.com/heronlabs/vps-agent/src/application
+            - pkg: github.com/heronlabs/talon/src/application
               desc: infrastructure never imports application
   exclusions:
     presets: [comments, std-error-handling]
@@ -36,4 +36,4 @@ formatters:
   enable: [gofmt, goimports]
   settings:
     goimports:
-      local-prefixes: [github.com/heronlabs/vps-agent]
+      local-prefixes: [github.com/heronlabs/talon]

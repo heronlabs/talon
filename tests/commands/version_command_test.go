@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/heronlabs/vps-agent/tests/cli"
+	"github.com/heronlabs/talon/tests/cli"
 )
 
 func TestVersionCommand(t *testing.T) {
