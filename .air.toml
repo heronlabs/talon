@@ -1,0 +1,16 @@
+# Rebuilds the Linux binary on every .go change. bin/linux is bind-mounted into
+# the fake VPS (.docker/compose.yaml), so the next `vps-agent` run there uses it.
+# The binary targets Linux, so air must not run it on the host: entrypoint is a no-op.
+root = "."
+tmp_dir = "bin/.air"
+
+[build]
+  cmd = "make build GOOS=linux BIN=bin/linux/vps-agent"
+  entrypoint = ["/usr/bin/true"]
+  include_dir = ["src"]
+  include_ext = ["go"]
+  exclude_regex = ["_test\\.go$"]
+  delay = 200
+
+[misc]
+  clean_on_exit = true

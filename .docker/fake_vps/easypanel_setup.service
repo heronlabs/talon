@@ -1,0 +1,14 @@
+[Unit]
+Description=Install Easypanel on first boot
+After=docker.service
+Requires=docker.service
+ConditionPathExists=!/etc/easypanel/.fake-vps-setup-done
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/default/easypanel-setup
+ExecStart=/usr/local/sbin/easypanel-setup
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

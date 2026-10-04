@@ -1,7 +1,0 @@
-[
-  {"ID": "s-api", "Spec": {"Name": "cms-heronlabs_cms-api", "Mode": {"Replicated": {"Replicas": 1}},
-    "TaskTemplate": {"Resources": {"Limits": {"NanoCPUs": 1000000000, "MemoryBytes": 1073741824}}}}},
-  {"ID": "s-db", "Spec": {"Name": "cms-heronlabs_cms-database", "Mode": {"Replicated": {"Replicas": 1}},
-    "TaskTemplate": {"Resources": {"Limits": {"NanoCPUs": 500000000, "MemoryBytes": 536870912}}}}},
-  {"ID": "s-ep", "Spec": {"Name": "easypanel", "Mode": {"Replicated": {"Replicas": 1}}}}
-]

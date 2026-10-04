@@ -1,0 +1,25 @@
+name: vps-agent
+
+services:
+  fake-vps:
+    build:
+      context: ..
+      dockerfile: .docker/Dockerfile
+    hostname: fake-vps
+    privileged: true
+    tmpfs:
+      - /run
+      - /run/lock
+      - /tmp
+    volumes:
+      - docker:/var/lib/docker
+      - containerd:/var/lib/containerd
+      - easypanel:/etc/easypanel
+      - ../bin/linux:/opt/vps-agent/bin:ro
+    ports:
+      - "3000:3000"
+
+volumes:
+  docker:
+  containerd:
+  easypanel:

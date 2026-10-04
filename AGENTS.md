@@ -34,7 +34,7 @@ Import direction, enforced by `depguard`: `cmd → usecase → port → domain`,
 
 ## Conventions
 
-- **Tests:** one `Test<Unit>_<Scenario>` per scenario. No table tests, no `for`/`range`, no `t.Run`. Exactly one assertion, `testkit.Equal` (whole value, go-cmp diff) or `testkit.ErrorIs`, as the last statement. Setup failures use `testkit.Must`/`MustDo`, which are not assertions. Arrange, act, assert separated by blank lines. `make lint` enforces this.
+- **Tests:** one `Test<File>` per source file (`version_command.go` → `TestVersionCommand`), one `t.Run("Should ...")` per scenario. No table tests, no `for`/`range`. Exactly one assertion, `testkit.Equal` (whole value, go-cmp diff) or `testkit.ErrorIs`, as the last statement. Setup failures use `testkit.Must`/`MustDo`, which are not assertions. Arrange, act, assert separated by blank lines. `make lint` enforces this.
 - **Ports** are small interfaces in `core/port`; adapters satisfy them implicitly. Dependencies enter through constructors; only `main.go` wires.
 - **DTOs stay in adapters.** Engine, CMS and config shapes never reach `core`.
 - **Errors** wrap with `%w` and context; sentinels (`ErrMalformed`, `ErrInvalid`, `ErrUnexpectedStatus`) are what tests match.

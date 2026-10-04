@@ -2,37 +2,40 @@ VERSION ?= 0.0.0-dev
 GOOS ?= $(shell go env GOOS)
 GOARCH ?= $(shell go env GOARCH)
 BIN ?= bin/vps-agent
+COMPOSE = docker compose -f .docker/compose.yaml
+# Unit coverage skips package main (src/): the integration tests cover it.
+UNIT_COVERPKG = $(shell go list ./src/... | grep -v '/src$$' | paste -sd, -)
+UNIT_COVERAGE = .coverage/unit
+INTEGRATION_COVERAGE = .coverage/integration
+INTEGRATION_BIN = bin/integration/vps-agent
 
-.PHONY: hooks build lint test test-integration test-mutation audit
-
-hooks:
-	git config core.hooksPath .githooks
+.PHONY: build up down watch test test\:integration
 
 build:
 	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build -trimpath \
-		-ldflags "-s -w -X main.version=$(VERSION)" -o $(BIN) ./cmd/vps-agent
+		-ldflags "-s -w -X main.version=$(VERSION)" -o $(BIN) ./src
 
-lint:
-	@unformatted=$$(gofmt -l .); [ -z "$$unformatted" ] || { echo "gofmt: $$unformatted" >&2; exit 1; }
-	go vet -tags integration ./...
-	golangci-lint run
-	GOFLAGS=-tags=integration go run ./internal/tools/testshape/cmd/testshape ./...
-	go mod tidy -diff
-	shellcheck scripts/*.sh .githooks/pre-commit
-	actionlint
+up:
+	mkdir -p bin/linux
+	$(COMPOSE) up -d --build
+
+down:
+	$(COMPOSE) down
+
+watch:
+	go tool air
 
 test:
-	go test -race -coverpkg=./internal/... -coverprofile=coverage.out ./...
-	scripts/check-coverage.sh coverage.out
+	rm -rf $(UNIT_COVERAGE) && mkdir -p $(UNIT_COVERAGE)
+	go test -race -coverpkg=$(UNIT_COVERPKG) -coverprofile=$(UNIT_COVERAGE)/coverage.out ./src/...
+	go tool cover -func=$(UNIT_COVERAGE)/coverage.out
+	go tool cover -html=$(UNIT_COVERAGE)/coverage.out -o $(UNIT_COVERAGE)/coverage.html
 
-test-integration:
-	go test -race -tags integration ./test/integration/...
-
-test-mutation:
-	mkdir -p reports
-	go tool gremlins unleash --threshold-efficacy 100 --output reports/mutation.json \
-		-E 'cmd/.*' -E 'internal/testkit/.*' -E 'internal/tools/testshape/cmd/.*'
-
-
-audit:
-	go tool govulncheck ./...
+test\:integration:
+	rm -rf $(INTEGRATION_COVERAGE) && mkdir -p $(INTEGRATION_COVERAGE)/covdata
+	go build -cover -covermode=atomic -coverpkg=./src/... -o $(INTEGRATION_BIN) ./src
+	VPS_AGENT_BIN=$(CURDIR)/$(INTEGRATION_BIN) GOCOVERDIR=$(CURDIR)/$(INTEGRATION_COVERAGE)/covdata \
+		go test -race -count=1 -tags integration ./tests/...
+	go tool covdata textfmt -i=$(INTEGRATION_COVERAGE)/covdata -o $(INTEGRATION_COVERAGE)/coverage.out
+	go tool cover -func=$(INTEGRATION_COVERAGE)/coverage.out
+	go tool cover -html=$(INTEGRATION_COVERAGE)/coverage.out -o $(INTEGRATION_COVERAGE)/coverage.html

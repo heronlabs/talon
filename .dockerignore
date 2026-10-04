@@ -1,0 +1,9 @@
+.git
+.worktrees/
+bin/
+dist/
+reports/
+coverage*.out
+.coverage/
+.supera/
+.superpowers/

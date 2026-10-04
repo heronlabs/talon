@@ -1,6 +1,0 @@
-[
-  {"ServiceID": "s-api", "Status": {"State": "running"}},
-  {"ServiceID": "s-api", "Status": {"State": "failed"}},
-  {"ServiceID": "s-db", "Status": {"State": "running"}},
-  {"ServiceID": "s-ep", "Status": {"State": "running"}}
-]
