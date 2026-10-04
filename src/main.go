@@ -32,6 +32,7 @@ func main() {
 		}
 
 		slog.Info("doctor", "status", "ok")
+	// TODO: wire the install command case here.
 	default:
 		slog.Error("command not found", "command", command)
 		os.Exit(1)

@@ -7,14 +7,14 @@ Go agent for Heron Labs Easypanel hosts: one static binary with two commands, `v
 | Path | Holds |
 |---|---|
 | `src/main.go` | The entry point: picks the command from `os.Args[1]`, builds its dependencies, logs the result, sets the exit code. |
-| `src/application/` | One command per file, `<name>_command.go`. `VersionCommand` and `DoctorCommand` are implemented. `deploy_command.go`, `install_command.go`, `report_command.go` and `update_command.go` hold only the package clause. |
+| `src/application/` | One command per file, `<name>_command.go`. `VersionCommand` and `DoctorCommand` are implemented. `deploy_command.go` and `report_command.go` hold only the package clause; `install_command.go` and `update_command.go` add `TODO` markers for the work to come. |
 | `src/core/` | `entity_deploy.go`, `entity_report.go`, `service_deploy.go` and `service_report.go`, each with only the package clause. |
 | `src/infrastructure/docker/` | `HealthCheck` interface and `HealthCheckService`, which pings the Engine API over the unix socket with `net/http`. `container_service.go` holds only the package clause. |
 | `src/infrastructure/cms/`, `easypanel/`, `environment/` | `infra_client_service.go`, `provider_service.go` and `config.go`, each with only the package clause. |
 | `tests/cli/` | Harness that runs the built binary (`TALON_BIN`) in a directory and returns output and exit code. |
 | `tests/commands/` | Integration tests (`//go:build integration`), one file per command, against the real binary, a temp directory and a fake Docker Engine on a unix socket. |
 | `.docker/` | The fake VPS: Ubuntu 22.04 with systemd, Docker Engine and Easypanel. The binary is at `/usr/local/bin/talon`, the working directory is `/opt/talon`. |
-| `.github/workflows/` | `continuous-integration.yml` (pull requests) and `continuous-deployment.yml` (release on `main`). |
+| `.github/workflows/` | `continuous-integration.yml` (pull requests) and `continuous-deployment.yml` (release on `main`, with the `linux/amd64` binary attached as `talon-linux-amd64`). |
 | `.githooks/pre-commit` | gofmt, build, vet and unit tests when staged changes touch Go files, `go.mod` or `go.sum`. |
 
 Import rules, enforced by `depguard` in `.golangci.yml`: `core` imports nothing from `application` or `infrastructure`; `infrastructure` never imports `application`. `DoctorCommand` depends on `docker.HealthCheck`, the interface the `docker` package exports beside its implementation.
