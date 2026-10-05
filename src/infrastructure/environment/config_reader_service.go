@@ -12,6 +12,7 @@ import (
 type Key struct {
 	Name    string
 	Default string
+	Secret  bool
 }
 
 func (k Key) Required() bool {
@@ -21,12 +22,12 @@ func (k Key) Required() bool {
 func Keys() []Key {
 	return []Key{
 		{Name: "CMS_URL"},
-		{Name: "CMS_AGENT_TOKEN"},
+		{Name: "CMS_AGENT_TOKEN", Secret: true},
 		{Name: "CMS_AGENT_HOST_NAME"},
 		{Name: "EASYPANEL_URL", Default: "http://127.0.0.1:3000"},
-		{Name: "EASYPANEL_TOKEN"},
+		{Name: "EASYPANEL_TOKEN", Secret: true},
 		{Name: "AWS_ACCESS_KEY_ID"},
-		{Name: "AWS_SECRET_ACCESS_KEY"},
+		{Name: "AWS_SECRET_ACCESS_KEY", Secret: true},
 		{Name: "AWS_REGION", Default: "us-east-1"},
 		{Name: "INTERVAL_RECONCILE", Default: "5m"},
 		{Name: "INTERVAL_REPORT", Default: "10m"},
@@ -65,7 +66,7 @@ func (s *ConfigReaderService) Read() (map[string]string, error) {
 				fallback = key.Default
 			}
 
-			value, err = s.prompt.Ask(key.Name, fallback)
+			value, err = s.prompt.Ask(key.Name, fallback, key.Secret)
 			if err != nil {
 				return nil, fmt.Errorf("prompt: %w", err)
 			}

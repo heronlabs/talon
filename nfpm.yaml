@@ -14,3 +14,7 @@ contents:
     expand: true
     file_info:
       mode: 0755
+  - dst: /etc/talon
+    type: dir
+    file_info:
+      mode: 0755

@@ -5,6 +5,7 @@ coverage.filtered.out
 reports/
 .DS_Store
 dist/
+.docker/config/
 docs/
 .superpowers/
 .supera/

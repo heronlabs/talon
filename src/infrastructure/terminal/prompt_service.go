@@ -8,7 +8,7 @@ import (
 )
 
 type Prompt interface {
-	Ask(name, fallback string) (string, error)
+	Ask(name, fallback string, secret bool) (string, error)
 }
 
 type PromptService struct {
@@ -20,10 +20,15 @@ func NewPromptService(reader io.Reader, writer io.Writer) *PromptService {
 	return &PromptService{scanner: bufio.NewScanner(reader), writer: writer}
 }
 
-func (s *PromptService) Ask(name, fallback string) (string, error) {
+func (s *PromptService) Ask(name, fallback string, secret bool) (string, error) {
 	label := name
 	if fallback != "" {
-		label = fmt.Sprintf("%s [%s]", name, fallback)
+		shown := fallback
+		if secret {
+			shown = "****"
+		}
+
+		label = fmt.Sprintf("%s [%s]", name, shown)
 	}
 	fmt.Fprintf(s.writer, "%s: ", label)
 

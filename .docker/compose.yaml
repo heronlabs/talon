@@ -15,7 +15,8 @@ services:
       - docker:/var/lib/docker
       - containerd:/var/lib/containerd
       - easypanel:/etc/easypanel
-      - ../bin/linux:/opt/talon/bin:ro
+      - ../bin/linux:/usr/local/bin:ro
+      - ./config:/etc/talon
     ports:
       - "3000:3000"
 

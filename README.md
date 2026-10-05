@@ -10,15 +10,15 @@ The Heron Labs agent for Easypanel hosts. A static Go binary with three commands
 
 | Command | What it does |
 |---|---|
-| `talon version` | Prints the version read from `version.txt`, or `0.0.0` when the file cannot be read. |
-| `talon setup` | Writes `.env` with mode `600`, asking for every value that is not in the environment. |
-| `talon doctor` | Checks that `.env` exists with mode `600` and that the Docker Engine answers `GET /_ping` on its socket within 5 seconds. |
+| `talon version` | Prints the version the binary was built with. |
+| `talon setup` | Writes `/etc/talon/.env` with mode `600`, asking for every value that is not in the environment. |
+| `talon doctor` | Checks that `/etc/talon/.env` exists with mode `600` and that the Docker Engine answers `GET /_ping` on its socket within 5 seconds. |
 
 Any other command, or none, is an error.
 
 ## Install
 
-Each release carries `talon_<version>_amd64.deb`. Copy it to the host and install it; the binary lands in `/usr/bin/talon`:
+Each release carries `talon_<version>_amd64.deb`. Copy it to the host and install it; the binary lands in `/usr/bin/talon` and the package creates `/etc/talon`:
 
 ```bash
 sudo dpkg -i talon_<version>_amd64.deb
@@ -28,11 +28,11 @@ sudo dpkg -i talon_<version>_amd64.deb
 
 ```bash
 talon version
-talon setup
-talon doctor
+sudo talon setup
+sudo talon doctor
 ```
 
-The three commands work in the working directory: `version` reads `version.txt`, `setup` writes `.env` and `doctor` reads it. `doctor` talks to the Docker Engine at `/var/run/docker.sock`; set `DOCKER_SOCKET` to use another socket.
+The commands run from any directory. The configuration is `/etc/talon/.env`: `setup` writes it and `doctor` reads it; set `TALON_CONFIG_DIR` to use another directory. `doctor` talks to the Docker Engine at `/var/run/docker.sock`; set `DOCKER_SOCKET` to use another socket.
 
 ### Setup
 
@@ -43,7 +43,7 @@ CMS_URL: https://cms.example.com
 AWS_REGION [us-east-1]:
 ```
 
-The fallback is the value already in `.env` or, without one, the default of the key. An empty answer keeps the fallback. A key with no default is required: when any of them ends up empty, `setup` lists them and writes nothing. Otherwise it replaces `.env` with the ten keys, mode `600`. Lines of the old `.env` that are not one of the keys are dropped.
+The fallback is the value already in `.env` or, without one, the default of the key. The fallback of a token or secret key is shown as `[****]`; what you type is echoed. An empty answer keeps the fallback. A key with no default is required: when any of them ends up empty, `setup` lists them and writes nothing. Otherwise it replaces `.env` with the ten keys, mode `600`. Lines of the old `.env` that are not one of the keys are dropped.
 
 Each command logs one line with its result and exits `0` on success or `1` on failure:
 

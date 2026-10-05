@@ -32,9 +32,18 @@ The other tools (`actionlint`, `govulncheck`, `gremlins`, `air`, `nfpm`) are pin
 
 ## The fake VPS
 
-`make up` builds and starts a privileged container with Ubuntu 22.04, systemd, Docker Engine and Easypanel, and publishes port `3000`. The image has the binary at `/usr/local/bin/talon` and `version.txt` in the working directory `/opt/talon`.
+`make up` builds and starts a privileged container with Ubuntu 22.04, systemd, Docker Engine and Easypanel, and publishes port `3000`. The image builds the `.deb` with `make package`, at the version in `version.txt`, and installs it with `dpkg -i`, as on a real host: the binary is `/usr/bin/talon` and the configuration directory is `/etc/talon`.
 
-`make watch` rebuilds the Linux binary into `bin/linux` on every `.go` change. That directory is mounted at `/opt/talon/bin`, which comes first on the container's `PATH`.
+```bash
+docker exec -it talon-fake-vps-1 bash
+talon version
+talon setup
+talon doctor
+```
+
+`.docker/config` on your machine is mounted at `/etc/talon`: the `.env` that `talon setup` writes in the container appears there, and an edit there is seen by the container. The directory is ignored by git.
+
+`make watch` rebuilds the Linux binary into `bin/linux` on every `.go` change. That directory is mounted at `/usr/local/bin`, which comes before `/usr/bin` on the `PATH`, so the rebuilt binary shadows the packaged one and reports version `0.0.0-dev`. Delete `bin/linux/talon` to go back to the packaged binary.
 
 ## Workflow
 

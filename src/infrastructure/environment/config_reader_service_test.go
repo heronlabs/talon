@@ -17,12 +17,17 @@ func (f fakeEnv) Getenv(name string) string {
 
 type fakePrompt struct {
 	answers map[string]string
+	secrets map[string]bool
 	err     error
 }
 
-func (f fakePrompt) Ask(name, fallback string) (string, error) {
+func (f fakePrompt) Ask(name, fallback string, secret bool) (string, error) {
 	if f.err != nil {
 		return "", f.err
+	}
+
+	if f.secrets != nil {
+		f.secrets[name] = secret
 	}
 
 	if answer, ok := f.answers[name]; ok {
@@ -32,18 +37,18 @@ func (f fakePrompt) Ask(name, fallback string) (string, error) {
 	return fallback, nil
 }
 
-func TestConfigReader(t *testing.T) {
+func TestConfigReaderService(t *testing.T) {
 	keys := []Key{{Name: "CMS_URL"}, {Name: "AWS_REGION", Default: "us-east-1"}}
 
 	t.Run("Should list every key in the order setup asks for them", func(t *testing.T) {
 		want := []Key{
 			{Name: "CMS_URL"},
-			{Name: "CMS_AGENT_TOKEN"},
+			{Name: "CMS_AGENT_TOKEN", Secret: true},
 			{Name: "CMS_AGENT_HOST_NAME"},
 			{Name: "EASYPANEL_URL", Default: "http://127.0.0.1:3000"},
-			{Name: "EASYPANEL_TOKEN"},
+			{Name: "EASYPANEL_TOKEN", Secret: true},
 			{Name: "AWS_ACCESS_KEY_ID"},
-			{Name: "AWS_SECRET_ACCESS_KEY"},
+			{Name: "AWS_SECRET_ACCESS_KEY", Secret: true},
 			{Name: "AWS_REGION", Default: "us-east-1"},
 			{Name: "INTERVAL_RECONCILE", Default: "5m"},
 			{Name: "INTERVAL_REPORT", Default: "10m"},
@@ -134,6 +139,19 @@ func TestConfigReader(t *testing.T) {
 
 		if !maps.Equal(values, want) {
 			t.Errorf("Read() = %v, want %v", values, want)
+		}
+	})
+
+	t.Run("Should tell the prompt which keys are secret", func(t *testing.T) {
+		secretKeys := []Key{{Name: "CMS_AGENT_TOKEN", Secret: true}, {Name: "AWS_REGION", Default: "us-east-1"}}
+		prompt := fakePrompt{answers: map[string]string{"CMS_AGENT_TOKEN": "token"}, secrets: map[string]bool{}}
+		reader := NewConfigReaderService(fstest.MapFS{}, secretKeys, fakeEnv{}.Getenv, prompt)
+		want := map[string]bool{"CMS_AGENT_TOKEN": true, "AWS_REGION": false}
+
+		_, _ = reader.Read()
+
+		if !maps.Equal(prompt.secrets, want) {
+			t.Errorf("Read() asked with secret %v, want %v", prompt.secrets, want)
 		}
 	})
 
