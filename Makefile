@@ -9,11 +9,15 @@ INTEGRATION_COVERAGE = .coverage/integration
 INTEGRATION_BIN = bin/integration/talon
 MUTATION_REPORT = .coverage/mutation
 
-.PHONY: build up down watch lint lint\:fix audit test test\:integration test\:mutation
+.PHONY: build package up down watch lint lint\:fix audit test test\:integration test\:mutation
 
 build:
 	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build -trimpath \
 		-ldflags "-s -w -X main.version=$(VERSION)" -o $(BIN) ./src
+
+package:
+	$(MAKE) build GOOS=linux BIN=dist/talon-linux-$(GOARCH)
+	GOOS= GOARCH= ARCH=$(GOARCH) VERSION=$(VERSION) go tool nfpm package --packager deb --target dist/
 
 up:
 	mkdir -p bin/linux

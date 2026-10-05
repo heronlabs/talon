@@ -1,6 +1,6 @@
 # talon
 
-Go agent for Heron Labs Easypanel hosts: one static binary with two commands, `version` and `doctor`. `README.md` describes what they do.
+Go agent for Heron Labs Easypanel hosts: one static binary with three commands, `version`, `setup` and `doctor`. `README.md` describes what they do.
 
 ## Map
 
@@ -10,21 +10,24 @@ Go agent for Heron Labs Easypanel hosts: one static binary with two commands, `v
 | `src/application/` | One command per file, `<name>_command.go`. `VersionCommand`, `DoctorCommand` and `SetupCommand` are implemented. `deploy_command.go` and `report_command.go` hold only the package clause; `update_command.go` adds a `TODO` marker for the work to come. |
 | `src/core/` | `entity_deploy.go`, `entity_report.go`, `service_deploy.go` and `service_report.go`, each with only the package clause. |
 | `src/infrastructure/docker/` | `HealthCheck` interface and `HealthCheckService`, which pings the Engine API over the unix socket with `net/http`. `container_service.go` holds only the package clause. |
-| `src/infrastructure/environment/` | `config_reader.go`: `Key` (name and default; required when it has no default) and `Keys()`, every variable of the `.env` in the order `setup` asks for them. `.env.example` at the root repeats the list by hand. |
+| `src/infrastructure/environment/` | `config_reader.go`: `Key` (name and default; required when it has no default), `Keys()`, every variable of the `.env` in the order `setup` asks for them, and `ConfigReader` with `ConfigReaderService`, which takes each key from the environment variable or, when that is empty, from the prompt, with the value in `.env` or the default as fallback, and fails listing the required keys left empty. `config_writer_service.go`: `ConfigWriter` and `ConfigWriterService`, which writes `.env.tmp` with mode `600` through an `os.Root` and renames it to `.env`. `.env.example` at the root repeats the list by hand. |
+| `src/infrastructure/terminal/` | `Prompt` interface and `PromptService`, which asks one question per line and returns the fallback on an empty answer. |
 | `src/infrastructure/cms/`, `easypanel/` | `infra_client_service.go` and `provider_service.go`, each with only the package clause. |
 | `tests/cli/` | Harness that runs the built binary (`TALON_BIN`) in a directory and returns output and exit code. |
 | `tests/commands/` | Integration tests (`//go:build integration`), one file per command, against the real binary, a temp directory and a fake Docker Engine on a unix socket. |
 | `.docker/` | The fake VPS: Ubuntu 22.04 with systemd, Docker Engine and Easypanel. The binary is at `/usr/local/bin/talon`, the working directory is `/opt/talon`. |
-| `.github/workflows/` | `continuous-integration.yml` (pull requests) and `continuous-deployment.yml` (release on `main`, with the `linux/amd64` binary attached as `talon-linux-amd64`). |
+| `nfpm.yaml` | The `.deb`: the Linux binary at `/usr/bin/talon`. `make package` passes `ARCH` and `VERSION`. |
+| `.github/workflows/` | `continuous-integration.yml` (pull requests) and `continuous-deployment.yml` (release on `main`, with `talon-linux-amd64` and `talon_<version>_amd64.deb` attached). |
 | `.githooks/pre-commit` | gofmt, build, vet and unit tests when staged changes touch Go files, `go.mod` or `go.sum`. |
 
-Import rules, enforced by `depguard` in `.golangci.yml`: `core` imports nothing from `application` or `infrastructure`; `infrastructure` never imports `application`. `DoctorCommand` depends on `docker.HealthCheck`, the interface the `docker` package exports beside its implementation.
+Import rules, enforced by `depguard` in `.golangci.yml`: `core` imports nothing from `application` or `infrastructure`; `infrastructure` never imports `application`. Commands depend on the interfaces the infrastructure packages export beside their implementations: `DoctorCommand` on `docker.HealthCheck`, `SetupCommand` on `environment.ConfigReader` and `environment.ConfigWriter`.
 
 ## Commands
 
 | Command | Does |
 |---|---|
 | `make build` | Static binary in `bin/talon` (`GOOS`, `GOARCH`, `VERSION`, `BIN` overridable) |
+| `make package` | Linux binary and its `.deb` in `dist/`, through nfpm (`GOARCH` and `VERSION` overridable) |
 | `make lint` | golangci-lint (with gofmt and goimports), actionlint, shellcheck, `go mod tidy -diff` |
 | `make lint:fix` | golangci-lint with `--fix` |
 | `make test` | Unit tests with the race detector; coverage in `.coverage/unit/` |
@@ -34,12 +37,12 @@ Import rules, enforced by `depguard` in `.golangci.yml`: `core` imports nothing 
 | `make up` / `make down` | Start and stop the fake VPS |
 | `make watch` | Rebuild the Linux binary into `bin/linux` on every `.go` change; the fake VPS mounts it at `/opt/talon/bin`, first on its `PATH` |
 
-`golangci-lint` and `shellcheck` come from brew locally. `actionlint`, `govulncheck`, `gremlins` and `air` are `go tool`s pinned in `go.mod`. The target names use a colon (`test:integration`), not a dash.
+`golangci-lint` and `shellcheck` come from brew locally. `actionlint`, `govulncheck`, `gremlins`, `air` and `nfpm` are `go tool`s pinned in `go.mod`. The target names use a colon (`test:integration`), not a dash.
 
 ## Conventions
 
 - **Tests:** one `Test<Type>` per source file, in the same package (`version_command.go` and `TestVersionCommand` in `version_command_test.go`), and one `t.Run("Should ...")` per scenario. No table tests, no `for`/`range`. Arrange, act and assert are separated by blank lines, and the single assertion is the last statement: one `if` with one `t.Errorf`. Setup failures use `t.Fatal` inside helpers marked `t.Helper()`.
-- **Fakes** are written by hand in the test file that uses them (`fakeHealthCheck`). The filesystem enters as `fs.FS` and tests pass `fstest.MapFS`.
+- **Fakes** are written by hand in the test file that uses them (`fakeHealthCheck`). The filesystem enters as `fs.FS` for reads, and tests pass `fstest.MapFS`; writes go through an `*os.Root`, and tests open one on `t.TempDir()`.
 - **Integration tests** assert the exit code and the output of the real binary in one condition.
 - **Mutants:** a surviving equivalent mutant is fixed by refactoring the code, not by excluding it.
 - **Dependencies** enter through constructors (`New<Type>`). Only `main.go` wires.

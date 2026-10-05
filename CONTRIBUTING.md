@@ -13,13 +13,14 @@ You need:
 - `golangci-lint` and `shellcheck` on the `PATH` (`brew install golangci-lint shellcheck`);
 - Docker, only for the fake VPS.
 
-The other tools (`actionlint`, `govulncheck`, `gremlins`, `air`) are pinned in `go.mod` and run through `go tool`.
+The other tools (`actionlint`, `govulncheck`, `gremlins`, `air`, `nfpm`) are pinned in `go.mod` and run through `go tool`.
 
 ## Commands
 
 | Command | Purpose |
 |---------|---------|
 | `make build` | Build `bin/talon` |
+| `make package` | Build the Linux binary and its `.deb` in `dist/` |
 | `make lint` | golangci-lint, actionlint, shellcheck, `go mod tidy -diff` |
 | `make lint:fix` | Apply the fixes golangci-lint can make |
 | `make test` | Unit tests, coverage report in `.coverage/unit/` |
