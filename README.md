@@ -15,55 +15,6 @@ The Heron Labs agent for Easypanel hosts. A static Go binary with two commands.
 
 Any other command, or none, is an error.
 
-## Install
-
-Each release carries one asset, `talon-linux-amd64`. Run these steps as `root` on the VPS, in `bash`; they need only `curl`.
-
-The repository is private, so the download needs a GitHub token that can read it: a fine-grained personal access token with `Contents: read` on `heronlabs/talon`. Keep it in the environment only. `read -s` keeps it out of the shell history.
-
-```bash
-read -rsp 'GitHub token: ' GITHUB_TOKEN && export GITHUB_TOKEN && echo
-```
-
-Download the binary of the latest release and install it:
-
-```bash
-RELEASE="$(curl -fsS -H "Authorization: Bearer $GITHUB_TOKEN" \
-  https://api.github.com/repos/heronlabs/talon/releases/latest)"
-ASSET_URL="$(printf '%s' "$RELEASE" \
-  | grep -oE 'https://api\.github\.com/repos/heronlabs/talon/releases/assets/[0-9]+' \
-  | head -n 1)"
-VERSION="$(printf '%s' "$RELEASE" \
-  | grep -oE '"tag_name": *"v[^"]+"' \
-  | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')"
-
-curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" -H 'Accept: application/octet-stream' \
-  -o /tmp/talon "$ASSET_URL"
-
-install -m 755 /tmp/talon /usr/local/bin/talon
-rm /tmp/talon
-```
-
-Create the working directory with its `.env` and `version.txt`:
-
-```bash
-mkdir -p /opt/talon
-touch /opt/talon/.env
-chmod 600 /opt/talon/.env
-echo "$VERSION" > /opt/talon/version.txt
-```
-
-Check the installation, then drop the token:
-
-```bash
-cd /opt/talon
-talon version
-talon doctor
-unset GITHUB_TOKEN
-```
-
-`talon version` must log the version of the release and `talon doctor` must log `status=ok`.
-
 ## Use
 
 ```bash
