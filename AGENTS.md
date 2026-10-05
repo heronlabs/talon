@@ -7,10 +7,10 @@ Go agent for Heron Labs Easypanel hosts: one static binary with two commands, `v
 | Path | Holds |
 |---|---|
 | `src/main.go` | The entry point: picks the command from `os.Args[1]`, builds its dependencies, logs the result, sets the exit code. |
-| `src/application/` | One command per file, `<name>_command.go`. `VersionCommand` and `DoctorCommand` are implemented. `deploy_command.go` and `report_command.go` hold only the package clause; `install_command.go` and `update_command.go` add `TODO` markers for the work to come. |
+| `src/application/` | One command per file, `<name>_command.go`. `VersionCommand`, `DoctorCommand` and `SetupCommand` are implemented. `deploy_command.go` and `report_command.go` hold only the package clause; `update_command.go` adds a `TODO` marker for the work to come. |
 | `src/core/` | `entity_deploy.go`, `entity_report.go`, `service_deploy.go` and `service_report.go`, each with only the package clause. |
 | `src/infrastructure/docker/` | `HealthCheck` interface and `HealthCheckService`, which pings the Engine API over the unix socket with `net/http`. `container_service.go` holds only the package clause. |
-| `src/infrastructure/environment/` | `config.go`: `Key` (name and default; required when it has no default) and `Keys()`, every variable of the `.env` in the order `install` asks for them. `.env.example` at the root repeats the list by hand. |
+| `src/infrastructure/environment/` | `config_reader.go`: `Key` (name and default; required when it has no default) and `Keys()`, every variable of the `.env` in the order `setup` asks for them. `.env.example` at the root repeats the list by hand. |
 | `src/infrastructure/cms/`, `easypanel/` | `infra_client_service.go` and `provider_service.go`, each with only the package clause. |
 | `tests/cli/` | Harness that runs the built binary (`TALON_BIN`) in a directory and returns output and exit code. |
 | `tests/commands/` | Integration tests (`//go:build integration`), one file per command, against the real binary, a temp directory and a fake Docker Engine on a unix socket. |
