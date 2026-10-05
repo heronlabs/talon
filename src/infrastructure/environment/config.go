@@ -21,6 +21,5 @@ func Keys() []Key {
 		{Name: "AWS_REGION", Default: "us-east-1"},
 		{Name: "INTERVAL_RECONCILE", Default: "5m"},
 		{Name: "INTERVAL_REPORT", Default: "10m"},
-		{Name: "DOCKER_SOCKET", Default: "/var/run/docker.sock"},
 	}
 }
