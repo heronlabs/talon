@@ -1,3 +1,9 @@
+## v0.5.3 (2026-10-06)
+
+### Miscellaneous Chores
+
+* other: remove the unused update command stub (#12) (eaaa89488155d134c60cad7eddb58a519d2158b0)
+
 ## v0.5.2 (2026-10-06)
 
 ### Miscellaneous Chores
