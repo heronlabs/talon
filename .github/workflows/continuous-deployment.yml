@@ -26,6 +26,8 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -52,3 +54,54 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.release.outputs.tag }}
         run: gh release upload "$TAG" dist/talon-linux-amd64 dist/talon_*_amd64.deb
+
+  # Adds the released .deb to the public apt repository. It takes the package
+  # from the release, so "Re-run failed jobs" publishes without cutting another
+  # release. Skipped until the repository variable APT_BUCKET_NAME is set.
+  publish:
+    name: 'Publish | apt'
+    needs: release
+    if: vars.APT_BUCKET_NAME != ''
+    runs-on: ubuntu-24.04
+    environment: 'main'
+    timeout-minutes: 15
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      BUCKET: ${{ vars.APT_BUCKET_NAME }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download the .deb from the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.release.outputs.tag }}
+        run: gh release download "$TAG" --pattern 'talon_*_amd64.deb' --dir dist
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-region: ${{ vars.APT_AWS_REGION }}
+          role-to-assume: ${{ vars.APT_AWS_ROLE_TO_ASSUME }}
+          role-session-name: talon-apt-publish
+
+      - name: Import the signing key
+        env:
+          APT_GPG_PRIVATE_KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
+        run: gpg --batch --import <<< "$APT_GPG_PRIVATE_KEY"
+
+      - name: Build the repository
+        run: |
+          command -v apt-ftparchive > /dev/null || { sudo apt-get update && sudo apt-get install -y --no-install-recommends apt-utils; }
+          aws s3 sync "s3://$BUCKET/pool" apt/pool
+          .github/scripts/build_apt_repository.sh apt dist/talon_*_amd64.deb
+
+      # The packages go first, so the index never names a file that is not there.
+      - name: Publish the repository
+        env:
+          DISTRIBUTION_ID: ${{ vars.APT_DISTRIBUTION_ID }}
+        run: |
+          aws s3 sync apt/pool "s3://$BUCKET/pool"
+          aws s3 cp apt/dists "s3://$BUCKET/dists" --recursive --cache-control no-cache
+          aws s3 cp apt/talon.gpg "s3://$BUCKET/talon.gpg" --cache-control no-cache
+          aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION_ID" --paths '/dists/*' /talon.gpg

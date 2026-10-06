@@ -18,11 +18,18 @@ Any other command, or none, is an error.
 
 ## Install
 
-Each release carries `talon_<version>_amd64.deb`. Copy it to the host and install it; the binary lands in `/usr/bin/talon` and the package creates `/etc/talon`:
+On the host, an Ubuntu or Debian `amd64` machine, add the Heron Labs apt repository and install the package. No token is needed:
 
 ```bash
-sudo dpkg -i talon_<version>_amd64.deb
+sudo curl -fsSL https://apt.heronlabs.com.br/talon.gpg -o /etc/apt/keyrings/talon.gpg
+echo "deb [signed-by=/etc/apt/keyrings/talon.gpg] https://apt.heronlabs.com.br stable main" | sudo tee /etc/apt/sources.list.d/talon.list
+sudo apt update
+sudo apt install talon
 ```
+
+The binary lands in `/usr/bin/talon` and the package creates `/etc/talon`. To update, run `sudo apt update && sudo apt install --only-upgrade talon`. Removing the package leaves `/etc/talon/.env` in place.
+
+Without the repository, copy `talon_<version>_amd64.deb` from a release to the host and run `sudo dpkg -i` on it.
 
 ## Use
 
@@ -59,6 +66,8 @@ Each command logs one line with its result and exits `0` on success or `1` on fa
 ## Releases
 
 A release is a tag with a changelog and two assets for `linux/amd64`: `talon-linux-amd64`, the static binary, and `talon_<version>_amd64.deb`, the package that installs it. The release workflow builds and attaches them; earlier releases have no assets. For any other platform, build from this repository.
+
+The same workflow then adds the `.deb` to the apt repository at `https://apt.heronlabs.com.br`: it rebuilds the package index from every version published so far and signs it with the key whose public half is `talon.gpg` at the root of the repository.
 
 ## Develop
 
