@@ -1,3 +1,9 @@
+## v0.5.2 (2026-10-06)
+
+### Miscellaneous Chores
+
+* other: publish apt via heronlabs/action-apt-repository (#11) (b5d120851db8c9b74c9178cc956dff708b85e965)
+
 ## v0.5.1 (2026-10-06)
 
 ### Documentation
