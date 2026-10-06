@@ -64,21 +64,14 @@ jobs:
     permissions:
       id-token: write
       contents: read
-    env:
-      GH_TOKEN: ${{ github.token }}
-      TAG: ${{ needs.release.outputs.tag }}
-      BUCKET: ${{ vars.APT_BUCKET_NAME }}
     steps:
-      - uses: actions/checkout@v7
-
-      - uses: heronlabs/action-web-server@v1
+      - uses: heronlabs/action-apt-repository@v1
         with:
           AWS_ROLE_TO_ASSUME: ${{ vars.APT_AWS_ROLE_TO_ASSUME }}
           AWS_REGION: ${{ vars.APT_AWS_REGION }}
-          AWS_ROLE_DURATION_SECONDS: 900
           AWS_ENV_PATH: /talon/
           BUCKET_NAME: ${{ vars.APT_BUCKET_NAME }}
           DISTRIBUTION_ID: ${{ vars.APT_DISTRIBUTION_ID }}
-          BUILD_COMMAND: .github/scripts/publish_apt_repository.sh
-          BUILD_FOLDER: apt
-          NO_CACHE_PATTERNS: 'dists/*,talon.gpg'
+          PACKAGE: talon
+          TAG: ${{ needs.release.outputs.tag }}
+          ORIGIN: Heron Labs
