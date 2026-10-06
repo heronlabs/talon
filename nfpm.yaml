@@ -1,0 +1,20 @@
+# The talon .deb, built by `make package`. ARCH and VERSION come from the Makefile.
+name: talon
+arch: ${ARCH}
+platform: linux
+version: ${VERSION}
+section: admin
+priority: optional
+maintainer: Heron Labs <org@heronlabs.com.br>
+description: The Heron Labs agent for Easypanel hosts.
+
+contents:
+  - src: dist/talon-linux-${ARCH}
+    dst: /usr/bin/talon
+    expand: true
+    file_info:
+      mode: 0755
+  - dst: /etc/talon
+    type: dir
+    file_info:
+      mode: 0755

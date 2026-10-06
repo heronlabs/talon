@@ -1,24 +1,13 @@
 package application
 
-import (
-	"io/fs"
-	"strings"
-)
-
 type VersionCommand struct {
-	fsys fs.FS
+	version string
 }
 
-func NewVersionCommand(fsys fs.FS) *VersionCommand {
-	return &VersionCommand{fsys: fsys}
+func NewVersionCommand(version string) *VersionCommand {
+	return &VersionCommand{version: version}
 }
 
-func (c *VersionCommand) GetTxtVersion() string {
-	version, err := fs.ReadFile(c.fsys, "version.txt")
-
-	if err != nil {
-		return "0.0.0"
-	}
-
-	return strings.TrimSpace(string(version))
+func (c *VersionCommand) GetVersion() string {
+	return c.version
 }

@@ -7,16 +7,21 @@ UNIT_COVERPKG = $(shell go list ./src/... | grep -v '/src$$' | paste -sd, -)
 UNIT_COVERAGE = .coverage/unit
 INTEGRATION_COVERAGE = .coverage/integration
 INTEGRATION_BIN = bin/integration/talon
+INTEGRATION_VERSION = 1.2.3
 MUTATION_REPORT = .coverage/mutation
 
-.PHONY: build up down watch lint lint\:fix audit test test\:integration test\:mutation
+.PHONY: build package up down watch lint lint\:fix audit test test\:integration test\:mutation
 
 build:
 	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build -trimpath \
 		-ldflags "-s -w -X main.version=$(VERSION)" -o $(BIN) ./src
 
+package:
+	$(MAKE) build GOOS=linux BIN=dist/talon-linux-$(GOARCH)
+	GOOS= GOARCH= ARCH=$(GOARCH) VERSION=$(VERSION) go tool nfpm package --packager deb --target dist/
+
 up:
-	mkdir -p bin/linux
+	mkdir -p bin/linux .docker/config
 	$(COMPOSE) up -d --build
 
 down:
@@ -45,7 +50,8 @@ test:
 
 test\:integration:
 	rm -rf $(INTEGRATION_COVERAGE) && mkdir -p $(INTEGRATION_COVERAGE)/covdata
-	go build -cover -covermode=atomic -coverpkg=./src/... -o $(INTEGRATION_BIN) ./src
+	go build -cover -covermode=atomic -coverpkg=./src/... \
+		-ldflags "-X main.version=$(INTEGRATION_VERSION)" -o $(INTEGRATION_BIN) ./src
 	TALON_BIN=$(CURDIR)/$(INTEGRATION_BIN) GOCOVERDIR=$(CURDIR)/$(INTEGRATION_COVERAGE)/covdata \
 		go test -race -count=1 -tags integration ./tests/...
 	go tool covdata textfmt -i=$(INTEGRATION_COVERAGE)/covdata -o $(INTEGRATION_COVERAGE)/coverage.out

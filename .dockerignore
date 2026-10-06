@@ -2,6 +2,7 @@
 .worktrees/
 bin/
 dist/
+.docker/config/
 reports/
 coverage*.out
 .coverage/

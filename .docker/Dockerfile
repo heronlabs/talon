@@ -2,8 +2,11 @@ FROM golang:1.27 AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
+COPY Makefile nfpm.yaml version.txt ./
 COPY src ./src
-RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/talon ./src
+# The same package the release workflow builds, for this machine's architecture.
+RUN make package VERSION="$(cat version.txt)" \
+ && mkdir /out && cp dist/talon_*.deb /out/talon.deb
 
 # Fake VPS: Ubuntu 22.04 with systemd as PID 1, Docker Engine and Easypanel.
 # Easypanel is installed on first boot by easypanel-setup.service, because its
@@ -25,10 +28,11 @@ RUN echo "EASYPANEL_VERSION=${EASYPANEL_VERSION}" > /etc/default/easypanel-setup
 COPY .docker/fake_vps/easypanel_setup.sh /usr/local/sbin/easypanel-setup
 COPY .docker/fake_vps/easypanel_setup.service /etc/systemd/system/easypanel-setup.service
 RUN systemctl enable easypanel-setup.service
-COPY --from=build /out/talon /usr/local/bin/talon
-COPY version.txt /opt/talon/version.txt
-WORKDIR /opt/talon
-# bin/ is bind-mounted from the host by `make watch`; it shadows the baked binary.
-ENV PATH=/opt/talon/bin:$PATH
+# talon is installed from its .deb, as on a real host: /usr/bin/talon and /etc/talon.
+# compose.yaml mounts bin/linux at /usr/local/bin, so the binary `make watch`
+# builds shadows the packaged one, and .docker/config at /etc/talon.
+COPY --from=build /out/talon.deb /root/talon.deb
+RUN dpkg -i /root/talon.deb && rm /root/talon.deb
+WORKDIR /root
 STOPSIGNAL SIGRTMIN+3
 CMD ["/sbin/init"]
