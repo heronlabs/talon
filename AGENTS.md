@@ -17,7 +17,8 @@ Go agent for Heron Labs Easypanel hosts: one static binary with three commands, 
 | `tests/commands/` | Integration tests (`//go:build integration`), one file per command, against the real binary, a temp directory and a fake Docker Engine on a unix socket. |
 | `.docker/` | The fake VPS: Ubuntu 22.04 with systemd, Docker Engine and Easypanel. The image installs the `.deb` built by `make package`: the binary is at `/usr/bin/talon`. `.docker/config`, ignored by git, is mounted at `/etc/talon`. |
 | `nfpm.yaml` | The `.deb`: the Linux binary at `/usr/bin/talon` and the directory `/etc/talon`. `make package` passes `ARCH` and `VERSION`. |
-| `.github/workflows/` | `continuous-integration.yml` (pull requests) and `continuous-deployment.yml` (release on `main`, with `talon-linux-amd64` and `talon_<version>_amd64.deb` attached). |
+| `.github/workflows/` | `continuous-integration.yml` (pull requests) and `continuous-deployment.yml` (on `main`): the `release` job cuts the release and attaches `talon-linux-amd64` and `talon_<version>_amd64.deb`; the `publish` job runs `heronlabs/action-web-server@v1`, which rebuilds the apt repository with `.github/scripts/publish_apt_repository.sh`, publishes it to S3 and invalidates CloudFront. `publish` runs in the `main` environment, assumes its AWS role through OIDC and is skipped while the repository variable `APT_BUCKET_NAME` is empty. It also reads the repository variables `APT_AWS_REGION`, `APT_AWS_ROLE_TO_ASSUME` and `APT_DISTRIBUTION_ID`. The signing key is the SSM parameter `/talon/apt/APT_GPG_PRIVATE_KEY`, an armored private key with no passphrase, which the action writes to `.env`. |
+| `.github/scripts/` | `build_apt_repository.sh`: copies `.deb` files into `pool/`, rebuilds `dists/stable` from the whole pool with `apt-ftparchive`, signs it with the default gpg key and exports the public key as `talon.gpg`. `publish_apt_repository.sh`: the `BUILD_COMMAND` of `publish`; downloads the `.deb` of the release and the published pool, imports the key from `.env` into an empty keyring and runs `build_apt_repository.sh` into `apt/`. |
 | `.githooks/pre-commit` | gofmt, build, vet and unit tests when staged changes touch Go files, `go.mod` or `go.sum`. |
 
 Import rules, enforced by `depguard` in `.golangci.yml`: `core` imports nothing from `application` or `infrastructure`; `infrastructure` never imports `application`. Commands depend on the interfaces the infrastructure packages export beside their implementations: `DoctorCommand` on `docker.HealthCheck`, `SetupCommand` on `environment.ConfigReader` and `environment.ConfigWriter`.
@@ -28,7 +29,7 @@ Import rules, enforced by `depguard` in `.golangci.yml`: `core` imports nothing 
 |---|---|
 | `make build` | Static binary in `bin/talon` (`GOOS`, `GOARCH`, `VERSION`, `BIN` overridable) |
 | `make package` | Linux binary and its `.deb` in `dist/`, through nfpm (`GOARCH` and `VERSION` overridable) |
-| `make lint` | golangci-lint (with gofmt and goimports), actionlint, shellcheck, `go mod tidy -diff` |
+| `make lint` | golangci-lint (with gofmt and goimports), actionlint, shellcheck over the hook and the scripts, `go mod tidy -diff` |
 | `make lint:fix` | golangci-lint with `--fix` |
 | `make test` | Unit tests with the race detector; coverage in `.coverage/unit/` |
 | `make test:integration` | Builds an instrumented binary with version `1.2.3` and runs `tests/`; coverage in `.coverage/integration/` |

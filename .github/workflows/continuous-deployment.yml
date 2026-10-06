@@ -26,6 +26,8 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -52,3 +54,36 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.release.outputs.tag }}
         run: gh release upload "$TAG" dist/talon-linux-amd64 dist/talon_*_amd64.deb
+
+  # Adds the released .deb to the apt repository. It takes the package from the
+  # release, so "Re-run failed jobs" publishes without cutting another release.
+  # Skipped until the repository variable APT_BUCKET_NAME is set: a job-level
+  # `if` cannot read the variables of an environment.
+  publish:
+    name: 'Publish | apt'
+    needs: release
+    if: vars.APT_BUCKET_NAME != ''
+    runs-on: ubuntu-24.04
+    environment: 'main'
+    timeout-minutes: 15
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.release.outputs.tag }}
+      BUCKET: ${{ vars.APT_BUCKET_NAME }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: heronlabs/action-web-server@v1
+        with:
+          AWS_ROLE_TO_ASSUME: ${{ vars.APT_AWS_ROLE_TO_ASSUME }}
+          AWS_REGION: ${{ vars.APT_AWS_REGION }}
+          AWS_ROLE_DURATION_SECONDS: 900
+          AWS_ENV_PATH: /talon/apt/
+          BUCKET_NAME: ${{ vars.APT_BUCKET_NAME }}
+          DISTRIBUTION_ID: ${{ vars.APT_DISTRIBUTION_ID }}
+          BUILD_COMMAND: .github/scripts/publish_apt_repository.sh
+          BUILD_FOLDER: apt
+          NO_CACHE_PATTERNS: 'dists/*,talon.gpg'
