@@ -75,3 +75,27 @@ jobs:
           PACKAGE: talon
           TAG: ${{ needs.release.outputs.tag }}
           ORIGIN: Heron Labs
+
+  deploy:
+    name: 'Deploy | ${{ matrix.host }}'
+    needs: publish
+    if: vars.DEPLOY_HOSTS != ''
+    runs-on: ubuntu-24.04
+    environment: 'main'
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        host: ${{ fromJSON(vars.DEPLOY_HOSTS) }}
+    steps:
+      - name: Upgrade talon on the host
+        env:
+          HOST: ${{ matrix.host }}
+          DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ vars.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_PRIVATE_KEY" > ~/.ssh/talon-deploy
+          chmod 600 ~/.ssh/talon-deploy
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          ssh -i ~/.ssh/talon-deploy -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes "talon-deploy@$HOST"

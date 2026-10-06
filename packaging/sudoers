@@ -1,0 +1,2 @@
+# Lets the talon-deploy SSH key run the talon upgrade, and nothing else.
+talon-deploy ALL=(root) NOPASSWD: /usr/lib/talon/upgrade ""

@@ -52,6 +52,7 @@ func TestConfigReaderService(t *testing.T) {
 			{Name: "AWS_REGION", Default: "us-east-1"},
 			{Name: "INTERVAL_RECONCILE", Default: "5m"},
 			{Name: "INTERVAL_REPORT", Default: "10m"},
+			{Name: "DEPLOY_SSH_PUBLIC_KEY", Optional: true},
 		}
 
 		keys := Keys()
@@ -73,6 +74,16 @@ func TestConfigReaderService(t *testing.T) {
 
 	t.Run("Should not require a key with default", func(t *testing.T) {
 		key := Key{Name: "AWS_REGION", Default: "us-east-1"}
+
+		required := key.Required()
+
+		if required {
+			t.Errorf("Required() = %v, want %v", required, false)
+		}
+	})
+
+	t.Run("Should not require an optional key without default", func(t *testing.T) {
+		key := Key{Name: "DEPLOY_SSH_PUBLIC_KEY", Optional: true}
 
 		required := key.Required()
 

@@ -10,13 +10,14 @@ import (
 )
 
 type Key struct {
-	Name    string
-	Default string
-	Secret  bool
+	Name     string
+	Default  string
+	Secret   bool
+	Optional bool
 }
 
 func (k Key) Required() bool {
-	return k.Default == ""
+	return k.Default == "" && !k.Optional
 }
 
 func Keys() []Key {
@@ -31,6 +32,7 @@ func Keys() []Key {
 		{Name: "AWS_REGION", Default: "us-east-1"},
 		{Name: "INTERVAL_RECONCILE", Default: "5m"},
 		{Name: "INTERVAL_REPORT", Default: "10m"},
+		{Name: "DEPLOY_SSH_PUBLIC_KEY", Optional: true},
 	}
 }
 
