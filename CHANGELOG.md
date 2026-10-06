@@ -1,3 +1,9 @@
+## v0.5.0 (2026-10-06)
+
+### Features
+
+* feat: publish the .deb to the apt repository on release (#9) (f3787ec89e11bf5b003e15d00a404985ea69aa1e)
+
 ## v0.4.0 (2026-10-06)
 
 ### Features
