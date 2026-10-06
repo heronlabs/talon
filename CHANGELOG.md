@@ -1,3 +1,9 @@
+## v0.4.0 (2026-10-06)
+
+### Features
+
+* feat: add setup command and .deb package (#7) (4bb5ac065c873f84e7873e94f50809a604f01e65)
+
 ## v0.3.1 (2026-10-04)
 
 ### Miscellaneous Chores
