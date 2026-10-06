@@ -1,3 +1,9 @@
+## v0.5.1 (2026-10-06)
+
+### Documentation
+
+* docs: apt variables live in the main environment (#10) (24ce7be65e3d9f75dbaa59bdf8097caa89b24579)
+
 ## v0.5.0 (2026-10-06)
 
 ### Features
