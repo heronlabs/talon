@@ -8,7 +8,6 @@ import (
 	"github.com/heronlabs/talon/src/application"
 	"github.com/heronlabs/talon/src/infrastructure/docker"
 	"github.com/heronlabs/talon/src/infrastructure/environment"
-	"github.com/heronlabs/talon/src/infrastructure/ssh"
 	"github.com/heronlabs/talon/src/infrastructure/terminal"
 )
 
@@ -29,11 +28,6 @@ func main() {
 	configDir := os.Getenv("TALON_CONFIG_DIR")
 	if configDir == "" {
 		configDir = "/etc/talon"
-	}
-
-	authorizedKeysPath := os.Getenv("TALON_AUTHORIZED_KEYS")
-	if authorizedKeysPath == "" {
-		authorizedKeysPath = "/root/.ssh/authorized_keys"
 	}
 
 	switch command {
@@ -57,7 +51,6 @@ func main() {
 		setupCommand := application.NewSetupCommand(
 			environment.NewConfigReaderService(os.DirFS(configDir), environment.Keys(), os.Getenv, terminal.NewPromptService(os.Stdin, os.Stdout)),
 			environment.NewConfigWriterService(root, environment.Keys()),
-			ssh.NewAuthorizedKeysService(authorizedKeysPath),
 		)
 		if err := setupCommand.Run(); err != nil {
 			slog.Error("setup", "error", err)

@@ -11,7 +11,7 @@ The Heron Labs agent for Easypanel hosts. A static Go binary with three commands
 | Command | What it does |
 |---|---|
 | `talon version` | Prints the version the binary was built with. |
-| `talon setup` | Writes `/etc/talon/.env` with mode `600`, asking for every value that is not in the environment, and authorizes the deploy key of push upgrades. |
+| `talon setup` | Writes `/etc/talon/.env` with mode `600`, asking for every value that is not in the environment. |
 | `talon doctor` | Checks that `/etc/talon/.env` exists with mode `600` and that the Docker Engine answers `GET /_ping` on its socket within 5 seconds. |
 
 Any other command, or none, is an error.
@@ -26,9 +26,23 @@ echo "deb [signed-by=/etc/apt/keyrings/talon.gpg] https://apt.heronlabs.com.br s
 sudo apt update && sudo apt install talon
 ```
 
-The binary lands in `/usr/bin/talon` and the package creates `/etc/talon`. To upgrade, run `sudo apt update && sudo apt install --only-upgrade talon`.
+The binary lands in `/usr/bin/talon` and the package creates `/etc/talon`.
 
 Without the repository, copy `talon_<version>_amd64.deb` from a release to the host and run `sudo dpkg -i` on it.
+
+## Automatic upgrades
+
+The package installs `talon-upgrade.timer`, which runs every 15 minutes, with a random delay of up to 5 minutes. Each run updates only `/etc/apt/sources.list.d/talon.list`, then runs `apt-get install --only-upgrade talon`; without that file it does nothing. Its log is in `journalctl -u talon-upgrade`.
+
+To install talon with the timer disabled:
+
+```bash
+sudo TALON_NO_UPDATES=1 apt install talon
+```
+
+`sudo systemctl disable --now talon-upgrade.timer` turns it off later and `sudo systemctl enable --now talon-upgrade.timer` turns it back on; upgrades keep that choice.
+
+To roll back, disable the timer first, then run `sudo apt install talon=<version>`. Otherwise the next run upgrades talon again.
 
 ## Use
 
@@ -38,7 +52,7 @@ sudo talon setup
 sudo talon doctor
 ```
 
-The commands run from any directory. The configuration is `/etc/talon/.env`: `setup` writes it and `doctor` reads it; set `TALON_CONFIG_DIR` to use another directory. `doctor` talks to the Docker Engine at `/var/run/docker.sock`; set `DOCKER_SOCKET` to use another socket. `setup` writes the deploy key in `/root/.ssh/authorized_keys`; set `TALON_AUTHORIZED_KEYS` to use another file.
+The commands run from any directory. The configuration is `/etc/talon/.env`: `setup` writes it and `doctor` reads it; set `TALON_CONFIG_DIR` to use another directory. `doctor` talks to the Docker Engine at `/var/run/docker.sock`; set `DOCKER_SOCKET` to use another socket.
 
 ### Setup
 
@@ -49,9 +63,7 @@ CMS_URL: https://cms.example.com
 AWS_REGION [us-east-1]:
 ```
 
-The fallback is the value already in `.env` or, without one, the default of the key. The fallback of a token or secret key is shown as `[****]`; what you type is echoed. An empty answer keeps the fallback. A key with no default is required, except `DEPLOY_SSH_PUBLIC_KEY`, which is optional: when any of them ends up empty, `setup` lists them and writes nothing. Otherwise it replaces `.env` with the eleven keys, mode `600`. Lines of the old `.env` that are not one of the keys are dropped.
-
-`DEPLOY_SSH_PUBLIC_KEY` is the public half of the deploy key (see [Push upgrades](#push-upgrades)). Before `.env`, `setup` puts it at the end of `/root/.ssh/authorized_keys` as one line that ends in `talon-deploy` and can only run the upgrade, in place of the line it wrote before; the other lines stay as they are. An empty key removes that line. A key that is not one `ssh-ed25519` public key is an error, and nothing is written.
+The fallback is the value already in `.env` or, without one, the default of the key. The fallback of a token or secret key is shown as `[****]`; what you type is echoed. An empty answer keeps the fallback. A key with no default is required: when any of them ends up empty, `setup` lists them and writes nothing. Otherwise it replaces `.env` with the ten keys, mode `600`. Lines of the old `.env` that are not one of the keys are dropped.
 
 Each command logs one line with its result and exits `0` on success or `1` on failure:
 
@@ -59,7 +71,6 @@ Each command logs one line with its result and exits `0` on success or `1` on fa
 2026/10/04 20:05:40 INFO version version=0.3.0
 2026/10/04 20:05:40 INFO setup status=ok
 2026/10/04 20:05:40 ERROR setup error="config: missing CMS_URL, CMS_AGENT_TOKEN"
-2026/10/04 20:05:40 ERROR setup error="deploy: DEPLOY_SSH_PUBLIC_KEY is not an ssh-ed25519 public key"
 2026/10/04 20:05:40 INFO doctor status=ok
 2026/10/04 20:05:40 ERROR doctor error="config: .env has mode 644, want 600"
 2026/10/04 20:05:40 ERROR command not found command=foo
@@ -70,35 +81,6 @@ Each command logs one line with its result and exits `0` on success or `1` on fa
 A release is a tag with a changelog and two assets for `linux/amd64`: `talon-linux-amd64`, the static binary, and `talon_<version>_amd64.deb`, the package that installs it. The release workflow builds and attaches them; earlier releases have no assets. For any other platform, build from this repository.
 
 Each release is also published to the apt repository at `https://apt.heronlabs.com.br`: its index is rebuilt from every version published so far and signed with the key whose public half is `talon.gpg` at the root of the repository.
-
-## Push upgrades
-
-After each release reaches the apt repository, the release workflow upgrades talon on every host of `DEPLOY_HOSTS`: it connects over SSH as `root` with the deploy key, whose line in `/root/.ssh/authorized_keys` can only run `apt-get update`, `apt-get install --only-upgrade talon` and `talon version`. It always installs the latest version. The host's sshd must accept root logins by key, as Ubuntu's default `PermitRootLogin prohibit-password` does.
-
-To turn it on:
-
-1. Generate the key pair once, outside the hosts:
-
-   ```bash
-   ssh-keygen -t ed25519 -N '' -C talon-deploy -f talon-deploy
-   ```
-
-2. Store the private half, `talon-deploy`, as the secret `DEPLOY_SSH_PRIVATE_KEY` of the `main` environment. Then delete it locally.
-3. On each host, give `setup` the public half. It adds one line to `/root/.ssh/authorized_keys` and keeps the other keys:
-
-   ```bash
-   sudo DEPLOY_SSH_PUBLIC_KEY='ssh-ed25519 AAAA...' talon setup
-   ```
-
-4. Set the variable `DEPLOY_KNOWN_HOSTS` of the `main` environment to one line per host: its IP and the output of `cat /etc/ssh/ssh_host_ed25519_key.pub` on it, without the comment.
-
-   ```text
-   203.0.113.10 ssh-ed25519 AAAA...
-   ```
-
-5. Last, set the variable `DEPLOY_HOSTS` of the `main` environment to the JSON array of the hosts, like `["203.0.113.10"]`. Without it, the job is skipped.
-
-To roll back a host, run `sudo apt install talon=<version>` on it. To revoke the key on a host, remove `DEPLOY_SSH_PUBLIC_KEY` from `/etc/talon/.env` and run `sudo talon setup` again: it removes the line.
 
 ## Develop
 
