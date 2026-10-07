@@ -26,9 +26,23 @@ echo "deb [signed-by=/etc/apt/keyrings/talon.gpg] https://apt.heronlabs.com.br s
 sudo apt update && sudo apt install talon
 ```
 
-The binary lands in `/usr/bin/talon` and the package creates `/etc/talon`. To upgrade, run `sudo apt update && sudo apt install --only-upgrade talon`.
+The binary lands in `/usr/bin/talon` and the package creates `/etc/talon`.
 
 Without the repository, copy `talon_<version>_amd64.deb` from a release to the host and run `sudo dpkg -i` on it.
+
+## Automatic upgrades
+
+The package installs `talon-upgrade.timer`, which runs every 15 minutes, with a random delay of up to 5 minutes. Each run updates only `/etc/apt/sources.list.d/talon.list`, then runs `apt-get install --only-upgrade talon`; without that file it does nothing. Its log is in `journalctl -u talon-upgrade`.
+
+To install talon with the timer disabled:
+
+```bash
+sudo TALON_NO_UPDATES=1 apt install talon
+```
+
+`sudo systemctl disable --now talon-upgrade.timer` turns it off later and `sudo systemctl enable --now talon-upgrade.timer` turns it back on; upgrades keep that choice.
+
+To roll back, disable the timer first, then run `sudo apt install talon=<version>`. Otherwise the next run upgrades talon again.
 
 ## Use
 

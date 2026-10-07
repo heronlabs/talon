@@ -1,0 +1,22 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+  configure | abort-upgrade | abort-deconfigure | abort-remove)
+    deb-systemd-helper unmask talon-upgrade.timer >/dev/null || true
+    action=start
+    if [ -n "$TALON_NO_UPDATES" ]; then
+      deb-systemd-helper update-state talon-upgrade.timer >/dev/null || true
+      deb-systemd-helper disable talon-upgrade.timer >/dev/null || true
+      action=stop
+    elif deb-systemd-helper --quiet was-enabled talon-upgrade.timer; then
+      deb-systemd-helper enable talon-upgrade.timer >/dev/null || true
+    else
+      deb-systemd-helper update-state talon-upgrade.timer >/dev/null || true
+    fi
+    if [ -d /run/systemd/system ]; then
+      systemctl --system daemon-reload >/dev/null || true
+      deb-systemd-invoke "$action" talon-upgrade.timer >/dev/null || true
+    fi
+    ;;
+esac

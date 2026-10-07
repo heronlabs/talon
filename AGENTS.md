@@ -15,8 +15,9 @@ Go agent for Heron Labs Easypanel hosts: one static binary with three commands, 
 | `src/infrastructure/cms/`, `easypanel/` | `infra_client_service.go` and `provider_service.go`, each with only the package clause. |
 | `tests/cli/` | Harness that runs the built binary (`TALON_BIN`) with a configuration directory (`TALON_CONFIG_DIR`), from an empty working directory, and returns output and exit code. |
 | `tests/commands/` | Integration tests (`//go:build integration`), one file per command, against the real binary, a temp directory and a fake Docker Engine on a unix socket. |
-| `.docker/` | The fake VPS: Ubuntu 22.04 with systemd, Docker Engine and Easypanel. The image installs the `.deb` built by `make package`: the binary is at `/usr/bin/talon`. `.docker/config`, ignored by git, is mounted at `/etc/talon`. |
-| `nfpm.yaml` | The `.deb`: the Linux binary at `/usr/bin/talon` and the directory `/etc/talon`. `make package` passes `ARCH` and `VERSION`. |
+| `.docker/` | The fake VPS: Ubuntu 22.04 with systemd, Docker Engine and Easypanel. The image installs the `.deb` that `make package` builds in its build stage, which copies `Makefile`, `nfpm.yaml`, `version.txt`, `src` and `packaging`: the binary is at `/usr/bin/talon`. `.docker/config`, ignored by git, is mounted at `/etc/talon`. |
+| `packaging/` | `talon-upgrade.service`, a oneshot that runs only when `/etc/apt/sources.list.d/talon.list` exists: `apt-get update` of that list alone, then `apt-get install --only-upgrade talon`. `talon-upgrade.timer` starts it every 15 minutes, with a random delay of up to 5 minutes. `postinstall`, `preremove` and `postremove`, the maintainer scripts of the `.deb`, follow what debhelper generates for a timer, with `deb-systemd-helper` and `deb-systemd-invoke`: install enables and starts the timer unless the admin disabled it; with `TALON_NO_UPDATES` set, it disables and stops it, and later upgrades keep it disabled. They never restart the service: the upgrade runs inside it. |
+| `nfpm.yaml` | The `.deb`: the Linux binary at `/usr/bin/talon`, the directory `/etc/talon`, the two units of `packaging/` in `/usr/lib/systemd/system` and its three maintainer scripts. `make package` passes `ARCH` and `VERSION`. |
 | `.github/workflows/` | `continuous-integration.yml` (pull requests) and `continuous-deployment.yml` (on `main`): the `release` job cuts the release and attaches `talon-linux-amd64` and `talon_<version>_amd64.deb`; the `publish` job runs `heronlabs/action-apt-repository@v1`, which builds and signs the apt repository from the `.deb` of the release and publishes it through `heronlabs/action-web-server`. `publish` runs in the `main` environment, assumes its AWS role through OIDC and reads the variables `APT_BUCKET_NAME`, `APT_AWS_REGION`, `APT_AWS_ROLE_TO_ASSUME` and `APT_DISTRIBUTION_ID` of the `main` environment. The signing key is the SSM parameter `/talon/APT_GPG_PRIVATE_KEY`, an armored private key with no passphrase. |
 | `.githooks/pre-commit` | gofmt, build, vet and unit tests when staged changes touch Go files, `go.mod` or `go.sum`. |
 
@@ -28,7 +29,7 @@ Import rules, enforced by `depguard` in `.golangci.yml`: `core` imports nothing 
 |---|---|
 | `make build` | Static binary in `bin/talon` (`GOOS`, `GOARCH`, `VERSION`, `BIN` overridable) |
 | `make package` | Linux binary and its `.deb` in `dist/`, through nfpm (`GOARCH` and `VERSION` overridable) |
-| `make lint` | golangci-lint (with gofmt and goimports), actionlint, shellcheck, `go mod tidy -diff` |
+| `make lint` | golangci-lint (with gofmt and goimports), actionlint, shellcheck (also on the maintainer scripts in `packaging/`), `go mod tidy -diff` |
 | `make lint:fix` | golangci-lint with `--fix` |
 | `make test` | Unit tests with the race detector; coverage in `.coverage/unit/` |
 | `make test:integration` | Builds an instrumented binary with version `1.2.3` and runs `tests/`; coverage in `.coverage/integration/` |

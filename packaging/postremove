@@ -1,0 +1,16 @@
+#!/bin/sh
+set -e
+
+if [ -d /run/systemd/system ]; then
+  systemctl --system daemon-reload >/dev/null || true
+fi
+
+case "$1" in
+  remove)
+    deb-systemd-helper mask talon-upgrade.timer >/dev/null || true
+    ;;
+  purge)
+    deb-systemd-helper purge talon-upgrade.timer >/dev/null || true
+    deb-systemd-helper unmask talon-upgrade.timer >/dev/null || true
+    ;;
+esac

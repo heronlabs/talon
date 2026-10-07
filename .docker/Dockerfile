@@ -4,6 +4,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY Makefile nfpm.yaml version.txt ./
 COPY src ./src
+COPY packaging ./packaging
 # The same package the release workflow builds, for this machine's architecture.
 RUN make package VERSION="$(cat version.txt)" \
  && mkdir /out && cp dist/talon_*.deb /out/talon.deb

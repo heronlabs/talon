@@ -14,7 +14,20 @@ contents:
     expand: true
     file_info:
       mode: 0755
+  - src: packaging/talon-upgrade.service
+    dst: /usr/lib/systemd/system/talon-upgrade.service
+    file_info:
+      mode: 0644
+  - src: packaging/talon-upgrade.timer
+    dst: /usr/lib/systemd/system/talon-upgrade.timer
+    file_info:
+      mode: 0644
   - dst: /etc/talon
     type: dir
     file_info:
       mode: 0755
+
+scripts:
+  postinstall: packaging/postinstall
+  preremove: packaging/preremove
+  postremove: packaging/postremove
