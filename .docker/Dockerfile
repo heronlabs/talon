@@ -4,7 +4,6 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY Makefile nfpm.yaml version.txt ./
 COPY src ./src
-COPY packaging ./packaging
 # The same package the release workflow builds, for this machine's architecture.
 RUN make package VERSION="$(cat version.txt)" \
  && mkdir /out && cp dist/talon_*.deb /out/talon.deb
@@ -15,7 +14,7 @@ RUN make package VERSION="$(cat version.txt)" \
 FROM ubuntu:22.04
 ENV container=docker DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \
- && apt-get install -y --no-install-recommends systemd systemd-sysv dbus ca-certificates curl iptables lsof sudo \
+ && apt-get install -y --no-install-recommends systemd systemd-sysv dbus ca-certificates curl iptables lsof \
  && install -m 0755 -d /etc/apt/keyrings \
  && curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc \
  && echo "deb [signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu jammy stable" > /etc/apt/sources.list.d/docker.list \

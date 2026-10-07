@@ -7,8 +7,6 @@ section: admin
 priority: optional
 maintainer: Heron Labs <org@heronlabs.com.br>
 description: The Heron Labs agent for Easypanel hosts.
-depends:
-  - sudo
 
 contents:
   - src: dist/talon-linux-${ARCH}
@@ -20,15 +18,3 @@ contents:
     type: dir
     file_info:
       mode: 0755
-  - src: packaging/upgrade.sh
-    dst: /usr/lib/talon/upgrade
-    file_info:
-      mode: 0755
-  - src: packaging/sudoers
-    dst: /etc/sudoers.d/talon-deploy
-    type: config
-    file_info:
-      mode: 0440
-
-scripts:
-  postinstall: packaging/postinstall.sh

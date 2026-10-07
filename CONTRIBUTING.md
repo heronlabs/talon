@@ -21,7 +21,7 @@ The other tools (`actionlint`, `govulncheck`, `gremlins`, `air`, `nfpm`) are pin
 |---------|---------|
 | `make build` | Build `bin/talon` |
 | `make package` | Build the Linux binary and its `.deb` in `dist/` |
-| `make lint` | golangci-lint, actionlint, shellcheck, `visudo -cf`, `go mod tidy -diff` |
+| `make lint` | golangci-lint, actionlint, shellcheck, `go mod tidy -diff` |
 | `make lint:fix` | Apply the fixes golangci-lint can make |
 | `make test` | Unit tests, coverage report in `.coverage/unit/` |
 | `make test:integration` | Integration tests against the real binary |

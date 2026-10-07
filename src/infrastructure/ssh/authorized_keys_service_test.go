@@ -10,8 +10,11 @@ import (
 )
 
 const (
-	publicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICD1+7TNFPAfwc1N3JNIqifvcWV9Xy/JV9uBmvTdemqr"
-	wantLine  = "restrict,command=\"sudo -n /usr/lib/talon/upgrade\" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICD1+7TNFPAfwc1N3JNIqifvcWV9Xy/JV9uBmvTdemqr talon-deploy\n"
+	publicKey  = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICD1+7TNFPAfwc1N3JNIqifvcWV9Xy/JV9uBmvTdemqr"
+	deployLine = `restrict,command="export DEBIAN_FRONTEND=noninteractive; apt-get -qq update && apt-get -qq -y -o DPkg::Lock::Timeout=300 install --only-upgrade talon && talon version" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICD1+7TNFPAfwc1N3JNIqifvcWV9Xy/JV9uBmvTdemqr talon-deploy` + "\n"
+	adminKey   = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl admin@laptop\n"
+	opsKey     = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQAB ops@desktop\n"
+	otherKeys  = "# admins\n" + adminKey + "\n" + opsKey
 )
 
 func writeFile(t *testing.T, path, content string, mode os.FileMode) {
@@ -22,10 +25,10 @@ func writeFile(t *testing.T, path, content string, mode os.FileMode) {
 	}
 }
 
-func makeDir(t *testing.T, path string, mode os.FileMode) {
+func makeDir(t *testing.T, path string) {
 	t.Helper()
 
-	if err := os.Mkdir(path, mode); err != nil {
+	if err := os.Mkdir(path, 0o700); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -39,232 +42,249 @@ func makeReadOnly(t *testing.T, dir string) {
 	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) }) //nolint:gosec // G302: restores the temporary directory so it can be removed
 }
 
-func owner(t *testing.T, path string) [2]uint32 {
-	t.Helper()
-
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	stat := info.Sys().(*syscall.Stat_t)
-
-	return [2]uint32{stat.Uid, stat.Gid}
-}
-
 func TestAuthorizedKeysService(t *testing.T) {
-	t.Run("Should write the key forced to run the upgrade", func(t *testing.T) {
-		home := t.TempDir()
-		service := NewAuthorizedKeysService(home)
+	t.Run("Should add the key forced to run the upgrade after the other keys", func(t *testing.T) {
+		dir := t.TempDir()
+		writeFile(t, filepath.Join(dir, "authorized_keys"), otherKeys, 0o600)
+		service := NewAuthorizedKeysService(filepath.Join(dir, "authorized_keys"))
 
 		_ = service.Write(publicKey)
-		content, _ := fs.ReadFile(os.DirFS(home), ".ssh/authorized_keys")
+		content, _ := fs.ReadFile(os.DirFS(dir), "authorized_keys")
 
-		if string(content) != wantLine {
-			t.Errorf("Write() wrote %q, want %q", content, wantLine)
+		if string(content) != otherKeys+deployLine {
+			t.Errorf("Write() wrote %q, want %q", content, otherKeys+deployLine)
 		}
 	})
 
 	t.Run("Should drop the comment of the key", func(t *testing.T) {
-		home := t.TempDir()
-		service := NewAuthorizedKeysService(home)
+		dir := t.TempDir()
+		service := NewAuthorizedKeysService(filepath.Join(dir, "authorized_keys"))
 
 		_ = service.Write(publicKey + " operator@laptop")
-		content, _ := fs.ReadFile(os.DirFS(home), ".ssh/authorized_keys")
+		content, _ := fs.ReadFile(os.DirFS(dir), "authorized_keys")
 
-		if string(content) != wantLine {
-			t.Errorf("Write() wrote %q, want %q", content, wantLine)
+		if string(content) != deployLine {
+			t.Errorf("Write() wrote %q, want %q", content, deployLine)
 		}
 	})
 
-	t.Run("Should replace the key already authorized", func(t *testing.T) {
-		home := t.TempDir()
-		makeDir(t, filepath.Join(home, ".ssh"), 0o700)
-		writeFile(t, filepath.Join(home, ".ssh", "authorized_keys"), "ssh-ed25519 old\n", 0o600)
-		service := NewAuthorizedKeysService(home)
+	t.Run("Should replace the deploy key already authorized", func(t *testing.T) {
+		dir := t.TempDir()
+		writeFile(t, filepath.Join(dir, "authorized_keys"), adminKey+"ssh-ed25519 AAAAold talon-deploy\n"+opsKey, 0o600)
+		service := NewAuthorizedKeysService(filepath.Join(dir, "authorized_keys"))
 
 		_ = service.Write(publicKey)
-		content, _ := fs.ReadFile(os.DirFS(home), ".ssh/authorized_keys")
+		content, _ := fs.ReadFile(os.DirFS(dir), "authorized_keys")
 
-		if string(content) != wantLine {
-			t.Errorf("Write() wrote %q, want %q", content, wantLine)
+		if string(content) != adminKey+opsKey+deployLine {
+			t.Errorf("Write() wrote %q, want %q", content, adminKey+opsKey+deployLine)
+		}
+	})
+
+	t.Run("Should end the last key with a newline when the file has none", func(t *testing.T) {
+		dir := t.TempDir()
+		writeFile(t, filepath.Join(dir, "authorized_keys"), "ssh-rsa AAAAB3NzaC1yc2EAAAADAQAB ops@desktop", 0o600)
+		service := NewAuthorizedKeysService(filepath.Join(dir, "authorized_keys"))
+
+		_ = service.Write(publicKey)
+		content, _ := fs.ReadFile(os.DirFS(dir), "authorized_keys")
+
+		if string(content) != opsKey+deployLine {
+			t.Errorf("Write() wrote %q, want %q", content, opsKey+deployLine)
 		}
 	})
 
 	t.Run("Should replace a leftover temporary file", func(t *testing.T) {
-		home := t.TempDir()
-		makeDir(t, filepath.Join(home, ".ssh"), 0o700)
-		writeFile(t, filepath.Join(home, ".ssh", "authorized_keys.tmp"), "leftover\n", 0o644)
-		service := NewAuthorizedKeysService(home)
+		dir := t.TempDir()
+		writeFile(t, filepath.Join(dir, "authorized_keys.tmp"), "leftover\n", 0o644)
+		service := NewAuthorizedKeysService(filepath.Join(dir, "authorized_keys"))
 
 		_ = service.Write(publicKey)
-		content, _ := fs.ReadFile(os.DirFS(home), ".ssh/authorized_keys")
+		content, _ := fs.ReadFile(os.DirFS(dir), "authorized_keys")
 
-		if string(content) != wantLine {
-			t.Errorf("Write() wrote %q, want %q", content, wantLine)
+		if string(content) != deployLine {
+			t.Errorf("Write() wrote %q, want %q", content, deployLine)
 		}
 	})
 
-	t.Run("Should leave .ssh with mode 700", func(t *testing.T) {
-		home := t.TempDir()
-		service := NewAuthorizedKeysService(home)
+	t.Run("Should create the directory with mode 700", func(t *testing.T) {
+		dir := filepath.Join(t.TempDir(), ".ssh")
+		service := NewAuthorizedKeysService(filepath.Join(dir, "authorized_keys"))
 
 		_ = service.Write(publicKey)
-		info, err := os.Stat(filepath.Join(home, ".ssh"))
+		info, err := os.Stat(dir)
 
 		if err != nil || info.Mode().Perm() != 0o700 {
-			t.Errorf("Write() left .ssh as %v, %v; want mode 700", info, err)
+			t.Errorf("Write() left the directory as %v, %v; want mode 700", info, err)
 		}
 	})
 
-	t.Run("Should leave .ssh with mode 700 when it had another mode", func(t *testing.T) {
-		home := t.TempDir()
-		makeDir(t, filepath.Join(home, ".ssh"), 0o755)
-		service := NewAuthorizedKeysService(home)
+	t.Run("Should create authorized_keys with mode 600", func(t *testing.T) {
+		dir := filepath.Join(t.TempDir(), ".ssh")
+		service := NewAuthorizedKeysService(filepath.Join(dir, "authorized_keys"))
 
 		_ = service.Write(publicKey)
-		info, err := os.Stat(filepath.Join(home, ".ssh"))
-
-		if err != nil || info.Mode().Perm() != 0o700 {
-			t.Errorf("Write() left .ssh as %v, %v; want mode 700", info, err)
-		}
-	})
-
-	t.Run("Should leave authorized_keys with mode 600", func(t *testing.T) {
-		home := t.TempDir()
-		service := NewAuthorizedKeysService(home)
-
-		_ = service.Write(publicKey)
-		info, err := os.Stat(filepath.Join(home, ".ssh", "authorized_keys"))
+		info, err := os.Stat(filepath.Join(dir, "authorized_keys"))
 
 		if err != nil || info.Mode().Perm() != 0o600 {
 			t.Errorf("Write() left authorized_keys as %v, %v; want mode 600", info, err)
 		}
 	})
 
-	t.Run("Should give .ssh to the owner of the home", func(t *testing.T) {
-		home := t.TempDir()
-		service := NewAuthorizedKeysService(home)
-
-		_ = service.Write(publicKey)
-		got := owner(t, filepath.Join(home, ".ssh"))
-
-		if want := owner(t, home); got != want {
-			t.Errorf("Write() left .ssh owned by %v, want %v", got, want)
-		}
-	})
-
-	t.Run("Should give authorized_keys to the owner of the home", func(t *testing.T) {
-		home := t.TempDir()
-		service := NewAuthorizedKeysService(home)
-
-		_ = service.Write(publicKey)
-		got := owner(t, filepath.Join(home, ".ssh", "authorized_keys"))
-
-		if want := owner(t, home); got != want {
-			t.Errorf("Write() left authorized_keys owned by %v, want %v", got, want)
-		}
-	})
-
-	t.Run("Should fail on a key of another type", func(t *testing.T) {
-		service := NewAuthorizedKeysService(t.TempDir())
+	t.Run("Should fail on a key of another type without writing", func(t *testing.T) {
+		dir := t.TempDir()
+		writeFile(t, filepath.Join(dir, "authorized_keys"), otherKeys, 0o600)
+		service := NewAuthorizedKeysService(filepath.Join(dir, "authorized_keys"))
 
 		err := service.Write("ssh-rsa AAAAB3NzaC1yc2EAAAADAQAB")
+		content, _ := fs.ReadFile(os.DirFS(dir), "authorized_keys")
 
-		if !errors.Is(err, ErrInvalidPublicKey) {
-			t.Errorf("Write() = %v, want %v", err, ErrInvalidPublicKey)
+		if !errors.Is(err, ErrInvalidPublicKey) || string(content) != otherKeys {
+			t.Errorf("Write() = %v and wrote %q, want %v and %q", err, content, ErrInvalidPublicKey, otherKeys)
 		}
 	})
 
-	t.Run("Should fail on a key without its base64", func(t *testing.T) {
-		service := NewAuthorizedKeysService(t.TempDir())
+	t.Run("Should fail on a key without its base64 without writing", func(t *testing.T) {
+		dir := t.TempDir()
+		writeFile(t, filepath.Join(dir, "authorized_keys"), otherKeys, 0o600)
+		service := NewAuthorizedKeysService(filepath.Join(dir, "authorized_keys"))
 
 		err := service.Write("ssh-ed25519")
+		content, _ := fs.ReadFile(os.DirFS(dir), "authorized_keys")
 
-		if !errors.Is(err, ErrInvalidPublicKey) {
-			t.Errorf("Write() = %v, want %v", err, ErrInvalidPublicKey)
+		if !errors.Is(err, ErrInvalidPublicKey) || string(content) != otherKeys {
+			t.Errorf("Write() = %v and wrote %q, want %v and %q", err, content, ErrInvalidPublicKey, otherKeys)
 		}
 	})
 
-	t.Run("Should fail on a key that is not base64", func(t *testing.T) {
-		service := NewAuthorizedKeysService(t.TempDir())
+	t.Run("Should fail on a key that is not base64 without writing", func(t *testing.T) {
+		dir := t.TempDir()
+		writeFile(t, filepath.Join(dir, "authorized_keys"), otherKeys, 0o600)
+		service := NewAuthorizedKeysService(filepath.Join(dir, "authorized_keys"))
 
 		err := service.Write("ssh-ed25519 AAAA!!!!")
+		content, _ := fs.ReadFile(os.DirFS(dir), "authorized_keys")
 
-		if !errors.Is(err, ErrInvalidPublicKey) {
-			t.Errorf("Write() = %v, want %v", err, ErrInvalidPublicKey)
+		if !errors.Is(err, ErrInvalidPublicKey) || string(content) != otherKeys {
+			t.Errorf("Write() = %v and wrote %q, want %v and %q", err, content, ErrInvalidPublicKey, otherKeys)
 		}
 	})
 
-	t.Run("Should fail on a key whose blob is not ed25519", func(t *testing.T) {
-		service := NewAuthorizedKeysService(t.TempDir())
+	t.Run("Should fail on a key whose blob is not ed25519 without writing", func(t *testing.T) {
+		dir := t.TempDir()
+		writeFile(t, filepath.Join(dir, "authorized_keys"), otherKeys, 0o600)
+		service := NewAuthorizedKeysService(filepath.Join(dir, "authorized_keys"))
 
 		err := service.Write("ssh-ed25519 AAAAB3NzaC1yc2EAAAADAQAB")
+		content, _ := fs.ReadFile(os.DirFS(dir), "authorized_keys")
 
-		if !errors.Is(err, ErrInvalidPublicKey) {
-			t.Errorf("Write() = %v, want %v", err, ErrInvalidPublicKey)
+		if !errors.Is(err, ErrInvalidPublicKey) || string(content) != otherKeys {
+			t.Errorf("Write() = %v and wrote %q, want %v and %q", err, content, ErrInvalidPublicKey, otherKeys)
 		}
 	})
 
-	t.Run("Should fail on a key of two lines", func(t *testing.T) {
-		service := NewAuthorizedKeysService(t.TempDir())
+	t.Run("Should fail on a key of two lines without writing", func(t *testing.T) {
+		dir := t.TempDir()
+		writeFile(t, filepath.Join(dir, "authorized_keys"), otherKeys, 0o600)
+		service := NewAuthorizedKeysService(filepath.Join(dir, "authorized_keys"))
 
 		err := service.Write(publicKey + "\n" + publicKey)
+		content, _ := fs.ReadFile(os.DirFS(dir), "authorized_keys")
 
-		if !errors.Is(err, ErrInvalidPublicKey) {
-			t.Errorf("Write() = %v, want %v", err, ErrInvalidPublicKey)
+		if !errors.Is(err, ErrInvalidPublicKey) || string(content) != otherKeys {
+			t.Errorf("Write() = %v and wrote %q, want %v and %q", err, content, ErrInvalidPublicKey, otherKeys)
 		}
 	})
 
-	t.Run("Should fail on options before the type", func(t *testing.T) {
-		service := NewAuthorizedKeysService(t.TempDir())
+	t.Run("Should fail on options before the type without writing", func(t *testing.T) {
+		dir := t.TempDir()
+		writeFile(t, filepath.Join(dir, "authorized_keys"), otherKeys, 0o600)
+		service := NewAuthorizedKeysService(filepath.Join(dir, "authorized_keys"))
 
 		err := service.Write(`command="sh" ` + publicKey)
+		content, _ := fs.ReadFile(os.DirFS(dir), "authorized_keys")
 
-		if !errors.Is(err, ErrInvalidPublicKey) {
-			t.Errorf("Write() = %v, want %v", err, ErrInvalidPublicKey)
+		if !errors.Is(err, ErrInvalidPublicKey) || string(content) != otherKeys {
+			t.Errorf("Write() = %v and wrote %q, want %v and %q", err, content, ErrInvalidPublicKey, otherKeys)
 		}
 	})
 
-	t.Run("Should not write an invalid key", func(t *testing.T) {
-		home := t.TempDir()
-		service := NewAuthorizedKeysService(home)
+	t.Run("Should not create the directory for an invalid key", func(t *testing.T) {
+		dir := filepath.Join(t.TempDir(), ".ssh")
+		service := NewAuthorizedKeysService(filepath.Join(dir, "authorized_keys"))
 
 		_ = service.Write("ssh-rsa AAAAB3NzaC1yc2EAAAADAQAB")
-		_, err := os.Stat(filepath.Join(home, ".ssh"))
+		_, err := os.Stat(dir)
 
 		if !errors.Is(err, fs.ErrNotExist) {
-			t.Errorf("Write() left .ssh with %v, want %v", err, fs.ErrNotExist)
+			t.Errorf("Write() left the directory with %v, want %v", err, fs.ErrNotExist)
 		}
 	})
 
-	t.Run("Should fail when the home does not exist", func(t *testing.T) {
-		home := filepath.Join(t.TempDir(), "talon-deploy")
-		service := NewAuthorizedKeysService(home)
-		want := home + " not found, install the talon package"
-
-		err := service.Write(publicKey)
-
-		if !errors.Is(err, ErrHomeNotFound) || err.Error() != want {
-			t.Errorf("Write() = %v, want %q", err, want)
-		}
-	})
-
-	t.Run("Should fail when the home cannot be inspected", func(t *testing.T) {
+	t.Run("Should remove only the deploy key when the key is empty", func(t *testing.T) {
 		dir := t.TempDir()
-		writeFile(t, filepath.Join(dir, "file"), "", 0o600)
-		service := NewAuthorizedKeysService(filepath.Join(dir, "file", "talon-deploy"))
+		writeFile(t, filepath.Join(dir, "authorized_keys"), adminKey+deployLine+opsKey, 0o600)
+		service := NewAuthorizedKeysService(filepath.Join(dir, "authorized_keys"))
 
-		err := service.Write(publicKey)
+		_ = service.Write("")
+		content, _ := fs.ReadFile(os.DirFS(dir), "authorized_keys")
 
-		if !errors.Is(err, syscall.ENOTDIR) {
-			t.Errorf("Write() = %v, want %v", err, syscall.ENOTDIR)
+		if string(content) != adminKey+opsKey {
+			t.Errorf("Write() wrote %q, want %q", content, adminKey+opsKey)
 		}
 	})
 
-	t.Run("Should fail when the home is not a directory", func(t *testing.T) {
-		home := filepath.Join(t.TempDir(), "talon-deploy")
-		writeFile(t, home, "", 0o600)
-		service := NewAuthorizedKeysService(home)
+	t.Run("Should not rewrite authorized_keys without the deploy key when the key is empty", func(t *testing.T) {
+		dir := t.TempDir()
+		writeFile(t, filepath.Join(dir, "authorized_keys"), otherKeys, 0o644)
+		service := NewAuthorizedKeysService(filepath.Join(dir, "authorized_keys"))
+
+		_ = service.Write("")
+		info, err := os.Stat(filepath.Join(dir, "authorized_keys"))
+
+		if err != nil || info.Mode().Perm() != 0o644 {
+			t.Errorf("Write() left authorized_keys as %v, %v; want it untouched with mode 644", info, err)
+		}
+	})
+
+	t.Run("Should not create authorized_keys when the key is empty", func(t *testing.T) {
+		dir := t.TempDir()
+		service := NewAuthorizedKeysService(filepath.Join(dir, "authorized_keys"))
+
+		err := service.Write("")
+		_, statErr := os.Stat(filepath.Join(dir, "authorized_keys"))
+
+		if err != nil || !errors.Is(statErr, fs.ErrNotExist) {
+			t.Errorf("Write() = %v and left authorized_keys with %v, want nil and %v", err, statErr, fs.ErrNotExist)
+		}
+	})
+
+	t.Run("Should not create the directory when the key is empty", func(t *testing.T) {
+		dir := filepath.Join(t.TempDir(), ".ssh")
+		service := NewAuthorizedKeysService(filepath.Join(dir, "authorized_keys"))
+
+		err := service.Write("")
+		_, statErr := os.Stat(dir)
+
+		if err != nil || !errors.Is(statErr, fs.ErrNotExist) {
+			t.Errorf("Write() = %v and left the directory with %v, want nil and %v", err, statErr, fs.ErrNotExist)
+		}
+	})
+
+	t.Run("Should fail when the directory cannot be created", func(t *testing.T) {
+		service := NewAuthorizedKeysService(filepath.Join(t.TempDir(), "missing", ".ssh", "authorized_keys"))
+
+		err := service.Write(publicKey)
+
+		if !errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("Write() = %v, want %v", err, fs.ErrNotExist)
+		}
+	})
+
+	t.Run("Should fail when the directory is a file", func(t *testing.T) {
+		dir := filepath.Join(t.TempDir(), ".ssh")
+		writeFile(t, dir, "", 0o600)
+		service := NewAuthorizedKeysService(filepath.Join(dir, "authorized_keys"))
 
 		err := service.Write(publicKey)
 
@@ -273,24 +293,23 @@ func TestAuthorizedKeysService(t *testing.T) {
 		}
 	})
 
-	t.Run("Should fail when .ssh cannot be created", func(t *testing.T) {
-		home := t.TempDir()
-		makeReadOnly(t, home)
-		service := NewAuthorizedKeysService(home)
+	t.Run("Should fail when authorized_keys cannot be read", func(t *testing.T) {
+		dir := t.TempDir()
+		makeDir(t, filepath.Join(dir, "authorized_keys"))
+		service := NewAuthorizedKeysService(filepath.Join(dir, "authorized_keys"))
 
 		err := service.Write(publicKey)
 
-		if !errors.Is(err, fs.ErrPermission) {
-			t.Errorf("Write() = %v, want %v", err, fs.ErrPermission)
+		if !errors.Is(err, syscall.EISDIR) {
+			t.Errorf("Write() = %v, want %v", err, syscall.EISDIR)
 		}
 	})
 
 	t.Run("Should fail when the leftover temporary file cannot be removed", func(t *testing.T) {
-		home := t.TempDir()
-		makeDir(t, filepath.Join(home, ".ssh"), 0o700)
-		makeDir(t, filepath.Join(home, ".ssh", "authorized_keys.tmp"), 0o700)
-		writeFile(t, filepath.Join(home, ".ssh", "authorized_keys.tmp", "file"), "", 0o600)
-		service := NewAuthorizedKeysService(home)
+		dir := t.TempDir()
+		makeDir(t, filepath.Join(dir, "authorized_keys.tmp"))
+		writeFile(t, filepath.Join(dir, "authorized_keys.tmp", "file"), "", 0o600)
+		service := NewAuthorizedKeysService(filepath.Join(dir, "authorized_keys"))
 
 		err := service.Write(publicKey)
 
@@ -299,90 +318,15 @@ func TestAuthorizedKeysService(t *testing.T) {
 		}
 	})
 
-	t.Run("Should fail when .ssh cannot be written", func(t *testing.T) {
-		home := t.TempDir()
-		makeDir(t, filepath.Join(home, ".ssh"), 0o700)
-		makeReadOnly(t, filepath.Join(home, ".ssh"))
-		service := NewAuthorizedKeysService(home)
+	t.Run("Should fail when the directory cannot be written", func(t *testing.T) {
+		dir := t.TempDir()
+		makeReadOnly(t, dir)
+		service := NewAuthorizedKeysService(filepath.Join(dir, "authorized_keys"))
 
 		err := service.Write(publicKey)
 
 		if !errors.Is(err, fs.ErrPermission) {
 			t.Errorf("Write() = %v, want %v", err, fs.ErrPermission)
-		}
-	})
-
-	t.Run("Should fail when authorized_keys cannot be replaced", func(t *testing.T) {
-		home := t.TempDir()
-		makeDir(t, filepath.Join(home, ".ssh"), 0o700)
-		makeDir(t, filepath.Join(home, ".ssh", "authorized_keys"), 0o700)
-		writeFile(t, filepath.Join(home, ".ssh", "authorized_keys", "file"), "", 0o600)
-		service := NewAuthorizedKeysService(home)
-
-		err := service.Write(publicKey)
-
-		if err == nil {
-			t.Errorf("Write() = nil, want an error")
-		}
-	})
-
-	t.Run("Should remove authorized_keys when the key is empty", func(t *testing.T) {
-		home := t.TempDir()
-		makeDir(t, filepath.Join(home, ".ssh"), 0o700)
-		writeFile(t, filepath.Join(home, ".ssh", "authorized_keys"), wantLine, 0o600)
-		service := NewAuthorizedKeysService(home)
-
-		_ = service.Write("")
-		_, err := os.Stat(filepath.Join(home, ".ssh", "authorized_keys"))
-
-		if !errors.Is(err, fs.ErrNotExist) {
-			t.Errorf("Write() left authorized_keys with %v, want %v", err, fs.ErrNotExist)
-		}
-	})
-
-	t.Run("Should pass when the key is empty and nothing is authorized", func(t *testing.T) {
-		service := NewAuthorizedKeysService(t.TempDir())
-
-		err := service.Write("")
-
-		if err != nil {
-			t.Errorf("Write() = %v, want nil", err)
-		}
-	})
-
-	t.Run("Should pass when the key is empty and the home does not exist", func(t *testing.T) {
-		service := NewAuthorizedKeysService(filepath.Join(t.TempDir(), "talon-deploy"))
-
-		err := service.Write("")
-
-		if err != nil {
-			t.Errorf("Write() = %v, want nil", err)
-		}
-	})
-
-	t.Run("Should fail when the key is empty and the home is not a directory", func(t *testing.T) {
-		home := filepath.Join(t.TempDir(), "talon-deploy")
-		writeFile(t, home, "", 0o600)
-		service := NewAuthorizedKeysService(home)
-
-		err := service.Write("")
-
-		if err == nil {
-			t.Errorf("Write() = nil, want an error")
-		}
-	})
-
-	t.Run("Should fail when authorized_keys cannot be removed", func(t *testing.T) {
-		home := t.TempDir()
-		makeDir(t, filepath.Join(home, ".ssh"), 0o700)
-		makeDir(t, filepath.Join(home, ".ssh", "authorized_keys"), 0o700)
-		writeFile(t, filepath.Join(home, ".ssh", "authorized_keys", "file"), "", 0o600)
-		service := NewAuthorizedKeysService(home)
-
-		err := service.Write("")
-
-		if !errors.Is(err, syscall.ENOTEMPTY) {
-			t.Errorf("Write() = %v, want %v", err, syscall.ENOTEMPTY)
 		}
 	})
 }

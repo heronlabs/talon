@@ -23,10 +23,10 @@ func writeEnvContent(t *testing.T, dir, content string) {
 	}
 }
 
-func writeHostKey(t *testing.T, dir, content string) {
+func writeAuthorizedKeys(t *testing.T, dir, content string) {
 	t.Helper()
 
-	if err := os.WriteFile(filepath.Join(dir, "ssh_host_ed25519_key.pub"), []byte(content), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "authorized_keys"), []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -97,16 +97,18 @@ func TestSetupCommand(t *testing.T) {
 		}
 	})
 
-	t.Run("Should authorize the deploy key to run the upgrade only", func(t *testing.T) {
+	t.Run("Should add the deploy key to authorized_keys keeping the other keys", func(t *testing.T) {
 		dir := t.TempDir()
-		home := t.TempDir()
+		sshDir := t.TempDir()
+		adminKey := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQAB admin@laptop\n"
+		writeAuthorizedKeys(t, sshDir, adminKey)
 		setRequiredKeys(t)
 		t.Setenv("DEPLOY_SSH_PUBLIC_KEY", publicKey+" operator@laptop")
-		t.Setenv("TALON_DEPLOY_HOME", home)
-		want := "restrict,command=\"sudo -n /usr/lib/talon/upgrade\" " + publicKey + " talon-deploy\n"
+		t.Setenv("TALON_AUTHORIZED_KEYS", filepath.Join(sshDir, "authorized_keys"))
+		want := adminKey + `restrict,command="export DEBIAN_FRONTEND=noninteractive; apt-get -qq update && apt-get -qq -y -o DPkg::Lock::Timeout=300 install --only-upgrade talon && talon version" ` + publicKey + " talon-deploy\n"
 
 		out, code := cli.Run(t, dir, "setup")
-		content, _ := fs.ReadFile(os.DirFS(home), ".ssh/authorized_keys")
+		content, _ := fs.ReadFile(os.DirFS(sshDir), "authorized_keys")
 
 		if code != 0 || !strings.Contains(out, "INFO setup status=ok") || string(content) != want {
 			t.Errorf("exit %d, output %q, authorized_keys %q; want exit 0 with status=ok and authorized_keys %q", code, out, content, want)
@@ -123,36 +125,6 @@ func TestSetupCommand(t *testing.T) {
 
 		if code != 1 || !strings.Contains(out, `ERROR setup error="deploy: DEPLOY_SSH_PUBLIC_KEY is not an ssh-ed25519 public key"`) || !errors.Is(err, fs.ErrNotExist) {
 			t.Errorf("exit %d, output %q, .env %v; want exit 1 with the deploy key error and no .env", code, out, err)
-		}
-	})
-
-	t.Run("Should fail when the deploy home does not exist", func(t *testing.T) {
-		dir := t.TempDir()
-		home := filepath.Join(t.TempDir(), "talon-deploy")
-		setRequiredKeys(t)
-		t.Setenv("DEPLOY_SSH_PUBLIC_KEY", publicKey)
-		t.Setenv("TALON_DEPLOY_HOME", home)
-		want := `ERROR setup error="deploy: ` + home + ` not found, install the talon package"`
-
-		out, code := cli.Run(t, dir, "setup")
-
-		if code != 1 || !strings.Contains(out, want) {
-			t.Errorf("exit %d, output %q; want exit 1 with %q", code, out, want)
-		}
-	})
-
-	t.Run("Should log the host key without its comment", func(t *testing.T) {
-		dir := t.TempDir()
-		sshDir := t.TempDir()
-		writeHostKey(t, sshDir, publicKey+" root@vps-01\n")
-		setRequiredKeys(t)
-		t.Setenv("TALON_SSH_DIR", sshDir)
-		want := `INFO setup status=ok host_key="` + publicKey + `"`
-
-		out, code := cli.Run(t, dir, "setup")
-
-		if code != 0 || !strings.Contains(out, want) {
-			t.Errorf("exit %d, output %q; want exit 0 with %q", code, out, want)
 		}
 	})
 

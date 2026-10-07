@@ -33,8 +33,7 @@ watch:
 lint:
 	golangci-lint run ./...
 	go tool actionlint
-	shellcheck .githooks/pre-commit .docker/fake_vps/easypanel_setup.sh packaging/upgrade.sh packaging/postinstall.sh
-	visudo -cf packaging/sudoers
+	shellcheck .githooks/pre-commit .docker/fake_vps/easypanel_setup.sh
 	go mod tidy -diff
 
 lint\:fix:

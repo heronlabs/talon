@@ -31,14 +31,9 @@ func main() {
 		configDir = "/etc/talon"
 	}
 
-	deployHome := os.Getenv("TALON_DEPLOY_HOME")
-	if deployHome == "" {
-		deployHome = "/var/lib/talon-deploy"
-	}
-
-	sshDir := os.Getenv("TALON_SSH_DIR")
-	if sshDir == "" {
-		sshDir = "/etc/ssh"
+	authorizedKeysPath := os.Getenv("TALON_AUTHORIZED_KEYS")
+	if authorizedKeysPath == "" {
+		authorizedKeysPath = "/root/.ssh/authorized_keys"
 	}
 
 	switch command {
@@ -62,20 +57,14 @@ func main() {
 		setupCommand := application.NewSetupCommand(
 			environment.NewConfigReaderService(os.DirFS(configDir), environment.Keys(), os.Getenv, terminal.NewPromptService(os.Stdin, os.Stdout)),
 			environment.NewConfigWriterService(root, environment.Keys()),
-			ssh.NewAuthorizedKeysService(deployHome),
-			ssh.NewHostKeyService(os.DirFS(sshDir)),
+			ssh.NewAuthorizedKeysService(authorizedKeysPath),
 		)
-		hostKey, err := setupCommand.Run()
-		if err != nil {
+		if err := setupCommand.Run(); err != nil {
 			slog.Error("setup", "error", err)
 			os.Exit(1)
 		}
 
-		attributes := []any{"status", "ok"}
-		if hostKey != "" {
-			attributes = append(attributes, "host_key", hostKey)
-		}
-		slog.Info("setup", attributes...)
+		slog.Info("setup", "status", "ok")
 	default:
 		slog.Error("command not found", "command", command)
 		os.Exit(1)

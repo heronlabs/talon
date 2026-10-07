@@ -98,4 +98,4 @@ jobs:
           printf '%s\n' "$DEPLOY_SSH_PRIVATE_KEY" > ~/.ssh/talon-deploy
           chmod 600 ~/.ssh/talon-deploy
           printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
-          ssh -i ~/.ssh/talon-deploy -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes "talon-deploy@$HOST"
+          ssh -i ~/.ssh/talon-deploy -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes "root@$HOST"
