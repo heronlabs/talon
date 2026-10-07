@@ -13,8 +13,6 @@ import (
 	"github.com/heronlabs/talon/tests/cli"
 )
 
-const publicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICD1+7TNFPAfwc1N3JNIqifvcWV9Xy/JV9uBmvTdemqr"
-
 func writeEnvContent(t *testing.T, dir, content string) {
 	t.Helper()
 
@@ -76,6 +74,7 @@ func TestSetupCommand(t *testing.T) {
 
 	t.Run("Should write every key to .env from the environment variables", func(t *testing.T) {
 		dir := t.TempDir()
+		publicKey := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICD1+7TNFPAfwc1N3JNIqifvcWV9Xy/JV9uBmvTdemqr"
 		t.Setenv("CMS_URL", "https://cms.example.com")
 		t.Setenv("CMS_AGENT_TOKEN", "cms-token")
 		t.Setenv("CMS_AGENT_HOST_NAME", "vps-01")
@@ -100,6 +99,7 @@ func TestSetupCommand(t *testing.T) {
 	t.Run("Should add the deploy key to authorized_keys keeping the other keys", func(t *testing.T) {
 		dir := t.TempDir()
 		sshDir := t.TempDir()
+		publicKey := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICD1+7TNFPAfwc1N3JNIqifvcWV9Xy/JV9uBmvTdemqr"
 		adminKey := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQAB admin@laptop\n"
 		writeAuthorizedKeys(t, sshDir, adminKey)
 		setRequiredKeys(t)

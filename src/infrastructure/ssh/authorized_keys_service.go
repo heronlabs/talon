@@ -1,7 +1,6 @@
 package ssh
 
 import (
-	"bytes"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -11,11 +10,11 @@ import (
 	"strings"
 )
 
-// comment ends the deploy key's line, and marks it as talon's.
-const comment = "talon-deploy"
-
-// upgrade is the only command the deploy key runs.
-const upgrade = "export DEBIAN_FRONTEND=noninteractive; apt-get -qq update && apt-get -qq -y -o DPkg::Lock::Timeout=300 install --only-upgrade talon && talon version"
+const (
+	keyType    = "ssh-ed25519"
+	keyComment = "talon-deploy"
+	command    = "export DEBIAN_FRONTEND=noninteractive; apt-get -qq update && apt-get -qq -y -o DPkg::Lock::Timeout=300 install --only-upgrade talon && talon version"
+)
 
 var ErrInvalidPublicKey = errors.New("DEPLOY_SSH_PUBLIC_KEY is not an ssh-ed25519 public key")
 
@@ -25,18 +24,17 @@ type AuthorizedKeys interface {
 
 type AuthorizedKeysService struct {
 	dir  string
-	name string
+	file string
+	tmp  string
 }
 
 func NewAuthorizedKeysService(path string) *AuthorizedKeysService {
-	return &AuthorizedKeysService{dir: filepath.Dir(path), name: filepath.Base(path)}
+	file := filepath.Base(path)
+	return &AuthorizedKeysService{dir: filepath.Dir(path), file: file, tmp: file + ".tmp"}
 }
 
-// Write puts the line of publicKey at the end of the file, in place of the one
-// already there, and keeps every other line. An empty publicKey removes the
-// line.
 func (s *AuthorizedKeysService) Write(publicKey string) error {
-	line, err := authorizedKey(publicKey)
+	line, err := deployLine(publicKey)
 	if err != nil {
 		return err
 	}
@@ -56,64 +54,55 @@ func (s *AuthorizedKeysService) Write(publicKey string) error {
 	}
 	defer root.Close()
 
-	content, err := root.ReadFile(s.name)
+	current, err := root.ReadFile(s.file)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
 
-	others, found := withoutDeployKey(string(content))
+	others, found := otherLines(string(current))
 	if line == "" && !found {
 		return nil
 	}
 
-	if err := root.Remove(s.name + ".tmp"); err != nil && !errors.Is(err, fs.ErrNotExist) {
+	if err := root.Remove(s.tmp); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
 
-	if err := root.WriteFile(s.name+".tmp", []byte(others+line), 0o600); err != nil {
+	if err := root.WriteFile(s.tmp, []byte(others+line), 0o600); err != nil {
 		return err
 	}
 
-	return root.Rename(s.name+".tmp", s.name)
+	return root.Rename(s.tmp, s.file)
 }
 
-// authorizedKey builds the authorized_keys line from the type and the base64 of
-// publicKey only, so a pasted comment, option or second line never reaches it.
-// An empty publicKey has no line.
-func authorizedKey(publicKey string) (string, error) {
+func deployLine(publicKey string) (string, error) {
 	if publicKey == "" {
 		return "", nil
 	}
 
-	if strings.ContainsAny(publicKey, "\r\n") {
-		return "", ErrInvalidPublicKey
-	}
-
 	fields := strings.Fields(publicKey)
-	if len(fields) < 2 || fields[0] != "ssh-ed25519" {
+	if strings.ContainsAny(publicKey, "\r\n") || len(fields) < 2 || fields[0] != keyType {
 		return "", ErrInvalidPublicKey
 	}
 
-	blob, err := base64.StdEncoding.DecodeString(fields[1])
-	if err != nil || !bytes.HasPrefix(blob, []byte("\x00\x00\x00\x0bssh-ed25519")) {
+	if _, err := base64.StdEncoding.DecodeString(fields[1]); err != nil {
 		return "", ErrInvalidPublicKey
 	}
 
-	return fmt.Sprintf("restrict,command=\"%s\" ssh-ed25519 %s %s\n", upgrade, fields[1], comment), nil
+	return fmt.Sprintf("restrict,command=\"%s\" %s %s %s\n", command, keyType, fields[1], keyComment), nil
 }
 
-// withoutDeployKey returns the lines of content, in order and each ending in a
-// newline, except the deploy key's, and whether it had one.
-func withoutDeployKey(content string) (string, bool) {
+func otherLines(content string) (string, bool) {
 	var others strings.Builder
 	found := false
 	for line := range strings.Lines(content) {
 		fields := strings.Fields(line)
-		if len(fields) > 0 && fields[len(fields)-1] == comment {
+		if len(fields) > 0 && fields[len(fields)-1] == keyComment {
 			found = true
 			continue
 		}
-		others.WriteString(strings.TrimSuffix(line, "\n") + "\n")
+		others.WriteString(strings.TrimSuffix(line, "\n"))
+		others.WriteByte('\n')
 	}
 
 	return others.String(), found
