@@ -1,3 +1,9 @@
+## v0.6.0 (2026-10-07)
+
+### Features
+
+* feat: upgrade talon through a systemd timer (#13) (54c310b768a2e8a2cca2dd74a15e030a2d5fd603)
+
 ## v0.5.3 (2026-10-06)
 
 ### Miscellaneous Chores
