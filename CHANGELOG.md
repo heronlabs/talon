@@ -1,3 +1,9 @@
+## v0.7.0 (2026-10-08)
+
+### Features
+
+* feat: report the Docker state of the Easypanel services to a webhook (#14) (a8540f9de6a7de8903d3b1aaa693d70c44a645ed)
+
 ## v0.6.0 (2026-10-07)
 
 ### Features
