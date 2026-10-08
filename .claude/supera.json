@@ -5,7 +5,7 @@
   "mergeMethod": "squash",
   "remote": "origin",
   "testCommands": {
-    "integration": "make test-integration",
+    "integration": "make test:integration",
     "unit": "make test"
   }
 }

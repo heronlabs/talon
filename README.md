@@ -4,7 +4,7 @@
 
 # talon
 
-The Heron Labs agent for Easypanel hosts. A static Go binary with three commands.
+The Heron Labs agent for Easypanel hosts. A static Go binary with four commands.
 
 ## Commands
 
@@ -13,6 +13,7 @@ The Heron Labs agent for Easypanel hosts. A static Go binary with three commands
 | `talon version` | Prints the version the binary was built with. |
 | `talon setup` | Writes `/etc/talon/.env` with mode `600`, asking for every value that is not in the environment. |
 | `talon doctor` | Checks that `/etc/talon/.env` exists with mode `600` and that the Docker Engine answers `GET /_ping` on its socket within 5 seconds. |
+| `talon report` | Collects from the Docker Engine the size of the images and build cache and, for each service of each Easypanel project, its state, replicas, failed tasks, limits, memory, CPU, network, block I/O and named volumes, then posts it as JSON to `WEBHOOK_URL`, with the hostname of the machine as its host and `Authorization: Bearer` when `WEBHOOK_AGENT_TOKEN` is set. Without `WEBHOOK_URL` it sends nothing. |
 
 Any other command, or none, is an error.
 
@@ -50,29 +51,32 @@ To roll back, disable the timer first, then run `sudo apt install talon=<version
 talon version
 sudo talon setup
 sudo talon doctor
+sudo talon report
 ```
 
-The commands run from any directory. The configuration is `/etc/talon/.env`: `setup` writes it and `doctor` reads it; set `TALON_CONFIG_DIR` to use another directory. `doctor` talks to the Docker Engine at `/var/run/docker.sock`; set `DOCKER_SOCKET` to use another socket.
+The commands run from any directory. The configuration is `/etc/talon/.env`: `setup` writes it, `doctor` checks it and `report` reads it without asking anything; set `TALON_CONFIG_DIR` to use another directory. `doctor` and `report` talk to the Docker Engine at `/var/run/docker.sock`; set `DOCKER_SOCKET` to use another socket.
 
 ### Setup
 
 `setup` goes through the keys of `.env.example` in order. For each one it takes the environment variable of the same name; when that is empty it asks on the terminal, showing a fallback in brackets:
 
 ```text
-CMS_URL: https://cms.example.com
+WEBHOOK_URL: https://webhook.example.com
 AWS_REGION [us-east-1]:
 ```
 
-The fallback is the value already in `.env` or, without one, the default of the key. The fallback of a token or secret key is shown as `[****]`; what you type is echoed. An empty answer keeps the fallback. A key with no default is required: when any of them ends up empty, `setup` lists them and writes nothing. Otherwise it replaces `.env` with the ten keys, mode `600`. Lines of the old `.env` that are not one of the keys are dropped.
+The fallback is the value already in `.env` or, without one, the default of the key. The fallback of a token or secret key is shown as `[****]`; what you type is echoed. An empty answer keeps the fallback. A key with no default is required, except `WEBHOOK_URL` and `WEBHOOK_AGENT_TOKEN`: when any required key ends up empty, `setup` lists them and writes nothing. Otherwise it replaces `.env` with the seven keys, mode `600`. Lines of the old `.env` that are not one of the keys are dropped.
 
 Each command logs one line with its result and exits `0` on success or `1` on failure:
 
 ```text
 2026/10/04 20:05:40 INFO version version=0.3.0
 2026/10/04 20:05:40 INFO setup status=ok
-2026/10/04 20:05:40 ERROR setup error="config: missing CMS_URL, CMS_AGENT_TOKEN"
+2026/10/04 20:05:40 ERROR setup error="config: missing AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY"
 2026/10/04 20:05:40 INFO doctor status=ok
 2026/10/04 20:05:40 ERROR doctor error="config: .env has mode 644, want 600"
+2026/10/04 20:05:40 INFO report status=ok
+2026/10/04 20:05:40 ERROR report error="webhook: unexpected status: 401"
 2026/10/04 20:05:40 ERROR command not found command=foo
 ```
 

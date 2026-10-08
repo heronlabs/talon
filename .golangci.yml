@@ -22,15 +22,19 @@ linters:
           deny:
             - pkg: github.com/heronlabs/talon/src/application
               desc: core imports nothing from application
-            - pkg: github.com/heronlabs/talon/src/infrastructure
-              desc: core imports nothing from infrastructure
+        entity:
+          list-mode: strict
+          files: ["**/src/core/entity/**", "!$test"]
+          allow:
+            - $gostd
+            - github.com/heronlabs/talon/src/infrastructure/docker
         infrastructure:
           files: ["**/src/infrastructure/**", "!$test"]
           deny:
             - pkg: github.com/heronlabs/talon/src/application
               desc: infrastructure never imports application
   exclusions:
-    presets: [comments, std-error-handling]
+    presets: [std-error-handling]
 
 formatters:
   enable: [gofmt, goimports]
