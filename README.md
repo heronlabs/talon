@@ -13,7 +13,7 @@ The Heron Labs agent for Easypanel hosts. A static Go binary with four commands.
 | `talon version` | Prints the version the binary was built with. |
 | `talon setup` | Writes `/etc/talon/.env` with mode `600`, asking for every value that is not in the environment. |
 | `talon doctor` | Checks that `/etc/talon/.env` exists with mode `600` and that the Docker Engine answers `GET /_ping` on its socket within 5 seconds. |
-| `talon report` | Collects from the Docker Engine the size of the images and build cache and, for each service of each Easypanel project, its state, replicas, failed tasks, limits, memory, CPU, network, block I/O and named volumes, then posts it as JSON to `WEBHOOK_URL`, with the hostname of the machine as its host and `Authorization: Bearer` when `WEBHOOK_TOKEN` is set. Without `WEBHOOK_URL` it sends nothing. Either way it logs the report as JSON in `payload`. |
+| `talon report` | Collects from the host its RAM and swap, total and used, from `/proc/meminfo`, the total and used size of the disk of `/` from statfs, the load over 1, 5 and 15 minutes from `/proc/loadavg` and the uptime from `/proc/uptime`; from the Docker Engine the size of the images and build cache, the Easypanel version in `/app/package.json` of the running `easypanel` container, with whether talon supports it (`2.36.0`), and, for each service of each Easypanel project, its state, replicas, failed tasks, limits, memory, CPU, network, block I/O and disk: its named volumes plus the files of `/etc/easypanel/projects/<project>/<service>`. Then it posts the report as JSON to `WEBHOOK_URL`, with the hostname of the machine as its host and `Authorization: Bearer` when `WEBHOOK_TOKEN` is set. Without `WEBHOOK_URL` it sends nothing. Either way it logs the report as JSON in `payload`. Without a running `easypanel` container, the Easypanel version and whether it is supported are null. |
 
 Any other command, or none, is an error.
 
@@ -54,7 +54,7 @@ sudo talon doctor
 sudo talon report
 ```
 
-The commands run from any directory. The configuration is `/etc/talon/.env`: `setup` writes it, `doctor` checks it and `report` reads it without asking anything; set `TALON_CONFIG_DIR` to use another directory. `doctor` and `report` talk to the Docker Engine at `/var/run/docker.sock`; set `DOCKER_SOCKET` to use another socket.
+The commands run from any directory. The configuration is `/etc/talon/.env`: `setup` writes it, `doctor` checks it and `report` reads it without asking anything; set `TALON_CONFIG_DIR` to use another directory. `doctor` and `report` talk to the Docker Engine at `/var/run/docker.sock`; set `DOCKER_SOCKET` to use another socket. `report` reads `proc` and `etc/easypanel/projects` under the root of the host, `/`, and runs statfs on it; set `TALON_HOST_ROOT` to use another root.
 
 ### Setup
 

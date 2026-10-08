@@ -4,6 +4,8 @@ import (
 	"time"
 
 	"github.com/heronlabs/talon/src/infrastructure/docker"
+	"github.com/heronlabs/talon/src/infrastructure/easypanel"
+	"github.com/heronlabs/talon/src/infrastructure/host"
 )
 
 // Report holds what talon reports about its host: the host name, when it was measured, the agent, the system and the projects.
@@ -15,13 +17,13 @@ type Report struct {
 	Projects   []Project `json:"projects"`
 }
 
-// NewReport returns the report of host, measured at measuredAt in RFC3339Nano UTC by version of talon, with the system and the projects of snapshot.
-func NewReport(host string, measuredAt time.Time, version string, snapshot docker.Snapshot) *Report {
+// NewReport returns the report of hostname, measured at measuredAt in RFC3339Nano UTC, with the agent of version of talon and the Easypanel package of snapshot, the system of snapshot and hostSnapshot and the projects of snapshot and easypanelSnapshot.
+func NewReport(hostname string, measuredAt time.Time, version string, snapshot docker.Snapshot, hostSnapshot host.Snapshot, easypanelSnapshot easypanel.Snapshot) *Report {
 	return &Report{
-		Host:       host,
+		Host:       hostname,
 		MeasuredAt: measuredAt.UTC().Format(time.RFC3339Nano),
-		Agent:      Agent{Version: version},
-		System:     NewSystem(snapshot.DiskUsage),
-		Projects:   NewProjects(snapshot),
+		Agent:      NewAgent(version, snapshot.Easypanel),
+		System:     NewSystem(snapshot.DiskUsage, hostSnapshot),
+		Projects:   NewProjects(snapshot, easypanelSnapshot),
 	}
 }

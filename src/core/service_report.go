@@ -6,6 +6,8 @@ import (
 
 	"github.com/heronlabs/talon/src/core/entity"
 	"github.com/heronlabs/talon/src/infrastructure/docker"
+	"github.com/heronlabs/talon/src/infrastructure/easypanel"
+	"github.com/heronlabs/talon/src/infrastructure/host"
 	"github.com/heronlabs/talon/src/infrastructure/webhook"
 )
 
@@ -25,24 +27,36 @@ type ReportCollector interface {
 	Collect() (*docker.Snapshot, error)
 }
 
+// HostCollector collects the snapshot of the metrics of the host.
+type HostCollector interface {
+	Collect() (*host.Snapshot, error)
+}
+
+// EasypanelCollector collects the snapshot of the directories of the Easypanel projects of the host.
+type EasypanelCollector interface {
+	Collect() (*easypanel.Snapshot, error)
+}
+
 // ReportSender sends the report to the webhook at endpoint, with its token, and returns the reply.
 type ReportSender interface {
 	Send(endpoint, token string, report *entity.Report) (*webhook.ReportResponse, error)
 }
 
-// ReportService builds the report of the host from its snapshot and sends it to the webhook.
+// ReportService builds the report of the host from its snapshots and sends it to the webhook.
 type ReportService struct {
-	collector ReportCollector
-	sender    ReportSender
-	config    ConfigGetter
-	version   string
-	hostname  func() (string, error)
-	now       func() time.Time
+	collector          ReportCollector
+	hostCollector      HostCollector
+	easypanelCollector EasypanelCollector
+	sender             ReportSender
+	config             ConfigGetter
+	version            string
+	hostname           func() (string, error)
+	now                func() time.Time
 }
 
-// NewReportService returns a ReportService that collects the snapshot through collector, sends through sender, reads the configuration through config and builds the report with version, the host from hostname and the time from now.
-func NewReportService(collector ReportCollector, sender ReportSender, config ConfigGetter, version string, hostname func() (string, error), now func() time.Time) *ReportService {
-	return &ReportService{collector: collector, sender: sender, config: config, version: version, hostname: hostname, now: now}
+// NewReportService returns a ReportService that collects the snapshot of the Docker Engine through collector, the snapshot of the metrics of the host through hostCollector and the snapshot of the Easypanel directories through easypanelCollector, sends through sender, reads the configuration through config and builds the report with version, the host from hostname and the time from now.
+func NewReportService(collector ReportCollector, hostCollector HostCollector, easypanelCollector EasypanelCollector, sender ReportSender, config ConfigGetter, version string, hostname func() (string, error), now func() time.Time) *ReportService {
+	return &ReportService{collector: collector, hostCollector: hostCollector, easypanelCollector: easypanelCollector, sender: sender, config: config, version: version, hostname: hostname, now: now}
 }
 
 // Send builds the report, sends it to WEBHOOK_URL with WEBHOOK_TOKEN and returns it; without WEBHOOK_URL it builds it, sends nothing and returns it.
@@ -81,9 +95,9 @@ func (s *ReportService) readConfig() (endpoint, token string, err error) {
 	return endpoint, token, nil
 }
 
-// collect returns the report built from the snapshot of the host, with its hostname, the time from the clock and the version of talon.
+// collect returns the report built, in order, from the hostname, the snapshot of the Docker Engine, the snapshot of the metrics of the host and the snapshot of the Easypanel directories, with the time from the clock and the version of talon.
 func (s *ReportService) collect() (*entity.Report, error) {
-	host, err := s.hostname()
+	hostname, err := s.hostname()
 	if err != nil {
 		return nil, fmt.Errorf("host: %w", err)
 	}
@@ -93,5 +107,15 @@ func (s *ReportService) collect() (*entity.Report, error) {
 		return nil, fmt.Errorf("docker: %w", err)
 	}
 
-	return entity.NewReport(host, s.now(), s.version, *snapshot), nil
+	hostSnapshot, err := s.hostCollector.Collect()
+	if err != nil {
+		return nil, fmt.Errorf("system: %w", err)
+	}
+
+	easypanelSnapshot, err := s.easypanelCollector.Collect()
+	if err != nil {
+		return nil, fmt.Errorf("easypanel: %w", err)
+	}
+
+	return entity.NewReport(hostname, s.now(), s.version, *snapshot, *hostSnapshot, *easypanelSnapshot), nil
 }

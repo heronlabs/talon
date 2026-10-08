@@ -28,6 +28,8 @@ linters:
           allow:
             - $gostd
             - github.com/heronlabs/talon/src/infrastructure/docker
+            - github.com/heronlabs/talon/src/infrastructure/easypanel
+            - github.com/heronlabs/talon/src/infrastructure/host
         infrastructure:
           files: ["**/src/infrastructure/**", "!$test"]
           deny:

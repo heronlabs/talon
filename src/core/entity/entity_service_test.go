@@ -11,7 +11,7 @@ func TestService(t *testing.T) {
 		swarmService := decode[docker.SwarmService](t, `{"ID":"s1","Spec":{"Name":"shop_api"}}`)
 		want := Service{Name: "api", State: "missing"}
 
-		service := NewService("api", swarmService, docker.Snapshot{})
+		service := NewService("api", swarmService, docker.Snapshot{}, 0)
 
 		if service != want {
 			t.Errorf("NewService() = %+v, want %+v", service, want)
@@ -26,7 +26,7 @@ func TestService(t *testing.T) {
 		]`)}
 		want := Service{Name: "api", State: "running"}
 
-		service := NewService("api", swarmService, snapshot)
+		service := NewService("api", swarmService, snapshot, 0)
 
 		if service != want {
 			t.Errorf("NewService() = %+v, want %+v", service, want)
@@ -41,7 +41,7 @@ func TestService(t *testing.T) {
 		]`)}
 		want := Service{Name: "api", State: "restarting"}
 
-		service := NewService("api", swarmService, snapshot)
+		service := NewService("api", swarmService, snapshot, 0)
 
 		if service != want {
 			t.Errorf("NewService() = %+v, want %+v", service, want)
@@ -56,7 +56,7 @@ func TestService(t *testing.T) {
 		]`)}
 		want := Service{Name: "api", State: "paused"}
 
-		service := NewService("api", swarmService, snapshot)
+		service := NewService("api", swarmService, snapshot, 0)
 
 		if service != want {
 			t.Errorf("NewService() = %+v, want %+v", service, want)
@@ -71,7 +71,7 @@ func TestService(t *testing.T) {
 		]`)}
 		want := Service{Name: "api", State: "created"}
 
-		service := NewService("api", swarmService, snapshot)
+		service := NewService("api", swarmService, snapshot, 0)
 
 		if service != want {
 			t.Errorf("NewService() = %+v, want %+v", service, want)
@@ -86,7 +86,7 @@ func TestService(t *testing.T) {
 		]`)}
 		want := Service{Name: "api", State: "exited"}
 
-		service := NewService("api", swarmService, snapshot)
+		service := NewService("api", swarmService, snapshot, 0)
 
 		if service != want {
 			t.Errorf("NewService() = %+v, want %+v", service, want)
@@ -98,7 +98,7 @@ func TestService(t *testing.T) {
 		snapshot := docker.Snapshot{Containers: decode[[]docker.Container](t, `[{"Id":"a1","State":"removing","Labels":{"com.docker.swarm.service.name":"shop_api"}}]`)}
 		want := Service{Name: "api", State: "exited"}
 
-		service := NewService("api", swarmService, snapshot)
+		service := NewService("api", swarmService, snapshot, 0)
 
 		if service != want {
 			t.Errorf("NewService() = %+v, want %+v", service, want)
@@ -110,7 +110,7 @@ func TestService(t *testing.T) {
 		snapshot := docker.Snapshot{Containers: decode[[]docker.Container](t, `[{"Id":"a1","State":"unknown","Labels":{"com.docker.swarm.service.name":"shop_api"}}]`)}
 		want := Service{Name: "api", State: "dead"}
 
-		service := NewService("api", swarmService, snapshot)
+		service := NewService("api", swarmService, snapshot, 0)
 
 		if service != want {
 			t.Errorf("NewService() = %+v, want %+v", service, want)
@@ -125,7 +125,7 @@ func TestService(t *testing.T) {
 		]`)}
 		want := Service{Name: "api", State: "paused"}
 
-		service := NewService("api", swarmService, snapshot)
+		service := NewService("api", swarmService, snapshot, 0)
 
 		if service != want {
 			t.Errorf("NewService() = %+v, want %+v", service, want)
@@ -136,7 +136,7 @@ func TestService(t *testing.T) {
 		swarmService := decode[docker.SwarmService](t, `{"ID":"s1","Spec":{"Name":"shop_api"},"ServiceStatus":{"RunningTasks":2,"DesiredTasks":3}}`)
 		want := Service{Name: "api", State: "missing", ReplicasRunning: 2, ReplicasDesired: 3}
 
-		service := NewService("api", swarmService, docker.Snapshot{})
+		service := NewService("api", swarmService, docker.Snapshot{}, 0)
 
 		if service != want {
 			t.Errorf("NewService() = %+v, want %+v", service, want)
@@ -154,7 +154,7 @@ func TestService(t *testing.T) {
 		]`)}
 		want := Service{Name: "api", State: "missing", RecentTaskFailures: 2}
 
-		service := NewService("api", swarmService, snapshot)
+		service := NewService("api", swarmService, snapshot, 0)
 
 		if service != want {
 			t.Errorf("NewService() = %+v, want %+v", service, want)
@@ -165,7 +165,7 @@ func TestService(t *testing.T) {
 		swarmService := decode[docker.SwarmService](t, `{"ID":"s1","Spec":{"Name":"shop_api","TaskTemplate":{"Resources":{"Limits":{"NanoCPUs":1500000000,"MemoryBytes":536870912}}}}}`)
 		want := Service{Name: "api", State: "missing", MemoryLimitMiB: 512, CPULimit: 1.5}
 
-		service := NewService("api", swarmService, docker.Snapshot{})
+		service := NewService("api", swarmService, docker.Snapshot{}, 0)
 
 		if service != want {
 			t.Errorf("NewService() = %+v, want %+v", service, want)
@@ -187,7 +187,24 @@ func TestService(t *testing.T) {
 		}
 		want := Service{Name: "api", State: "exited", DiskGB: 2}
 
-		service := NewService("api", swarmService, snapshot)
+		service := NewService("api", swarmService, snapshot, 0)
+
+		if service != want {
+			t.Errorf("NewService() = %+v, want %+v", service, want)
+		}
+	})
+
+	t.Run("Should add the bytes of its directory to the size of its named volumes in GB", func(t *testing.T) {
+		swarmService := decode[docker.SwarmService](t, `{"ID":"s1","Spec":{"Name":"shop_api"}}`)
+		snapshot := docker.Snapshot{
+			DiskUsage: decode[docker.DiskUsage](t, `{"Volumes":[{"Name":"shop_data","UsageData":{"Size":1500000000}}]}`),
+			Containers: decode[[]docker.Container](t, `[
+				{"Id":"a1","State":"exited","Labels":{"com.docker.swarm.service.name":"shop_api"},"Mounts":[{"Type":"volume","Name":"shop_data"},{"Type":"bind","Name":""}]}
+			]`),
+		}
+		want := Service{Name: "api", State: "exited", DiskGB: 2.25}
+
+		service := NewService("api", swarmService, snapshot, 750000000)
 
 		if service != want {
 			t.Errorf("NewService() = %+v, want %+v", service, want)
@@ -207,7 +224,7 @@ func TestService(t *testing.T) {
 		}
 		want := Service{Name: "api", State: "exited", DiskGB: 0.5}
 
-		service := NewService("api", swarmService, snapshot)
+		service := NewService("api", swarmService, snapshot, 0)
 
 		if service != want {
 			t.Errorf("NewService() = %+v, want %+v", service, want)
@@ -229,7 +246,7 @@ func TestService(t *testing.T) {
 		}
 		want := Service{Name: "api", State: "running", MemoryUsedMiB: 150}
 
-		service := NewService("api", swarmService, snapshot)
+		service := NewService("api", swarmService, snapshot, 0)
 
 		if service != want {
 			t.Errorf("NewService() = %+v, want %+v", service, want)
@@ -250,7 +267,7 @@ func TestService(t *testing.T) {
 		}
 		want := Service{Name: "api", State: "running", MemoryUsedMiB: 100}
 
-		service := NewService("api", swarmService, snapshot)
+		service := NewService("api", swarmService, snapshot, 0)
 
 		if service != want {
 			t.Errorf("NewService() = %+v, want %+v", service, want)

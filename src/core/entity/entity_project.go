@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/heronlabs/talon/src/infrastructure/docker"
+	"github.com/heronlabs/talon/src/infrastructure/easypanel"
 )
 
 // projectSeparator is the separator of the project in the name of a Swarm service.
@@ -17,12 +18,12 @@ type Project struct {
 	Services  []Service  `json:"services"`
 }
 
-// NewProjects returns each Swarm service of snapshot named <project>_<service>, split on the first _, under its project, in the order the projects first appear; the services without _ are skipped.
-func NewProjects(snapshot docker.Snapshot) []Project {
+// NewProjects returns each Swarm service of snapshot named <project>_<service>, split on the first _, under its project, in the order the projects first appear, with the bytes of the directory <project>/<service> of easypanelSnapshot; the services without _ are skipped.
+func NewProjects(snapshot docker.Snapshot, easypanelSnapshot easypanel.Snapshot) []Project {
 	projects := []Project{}
 	for _, service := range snapshot.Services {
 		if projectName, serviceName, found := strings.Cut(service.Spec.Name, projectSeparator); found {
-			projects = addService(projects, projectName, NewService(serviceName, service, snapshot))
+			projects = addService(projects, projectName, NewService(serviceName, service, snapshot, easypanelSnapshot.Sizes[projectName][serviceName]))
 		}
 	}
 

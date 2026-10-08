@@ -35,6 +35,7 @@ const (
 	bytesPerGB     = 1e9
 	bytesPerMB     = 1e6
 	bytesPerMiB    = 1 << 20
+	kibPerGiB      = 1 << 20
 	nanoCPUsPerCPU = 1e9
 	percent        = 100
 )
@@ -61,8 +62,8 @@ type Service struct {
 	BlockWriteMB       float64 `json:"blockWriteMB"`
 }
 
-// NewService returns the service named name for the Swarm service: the state of its containers in snapshot, its replicas, its failed tasks, its limits, the size of its named volumes and the stats of its containers.
-func NewService(name string, service docker.SwarmService, snapshot docker.Snapshot) Service {
+// NewService returns the service named name for the Swarm service: the state of its containers in snapshot, its replicas, its failed tasks, its limits, the size of its named volumes plus dirSize, the bytes of its directory, and the stats of its containers.
+func NewService(name string, service docker.SwarmService, snapshot docker.Snapshot, dirSize int64) Service {
 	containers := serviceContainers(snapshot.Containers, service.Spec.Name)
 	limits := service.Spec.TaskTemplate.Resources.Limits
 	entry := Service{
@@ -73,7 +74,7 @@ func NewService(name string, service docker.SwarmService, snapshot docker.Snapsh
 		RecentTaskFailures: taskFailures(snapshot.Tasks, service.ID),
 		MemoryLimitMiB:     float64(limits.MemoryBytes) / bytesPerMiB,
 		CPULimit:           float64(limits.NanoCPUs) / nanoCPUsPerCPU,
-		DiskGB:             float64(volumesSize(containers, volumeSizes(snapshot.DiskUsage))) / bytesPerGB,
+		DiskGB:             float64(volumesSize(containers, volumeSizes(snapshot.DiskUsage))+dirSize) / bytesPerGB,
 	}
 	entry.addContainersStats(containers, snapshot.Stats)
 
