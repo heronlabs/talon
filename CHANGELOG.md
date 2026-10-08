@@ -1,3 +1,9 @@
+## v0.7.1 (2026-10-08)
+
+### Miscellaneous Chores
+
+* other: Refactor environment variable handling and update webhook token usage (5bdbbbf01433f74391a56650669cd608747aec04)
+
 ## v0.7.0 (2026-10-08)
 
 ### Features
