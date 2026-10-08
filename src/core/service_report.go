@@ -22,8 +22,8 @@ type ConfigGetter interface {
 	Get(name string) (string, error)
 }
 
-// ReportCollector collects the snapshot of the host from the Docker Engine.
-type ReportCollector interface {
+// DockerCollector collects the snapshot of the host from the Docker Engine.
+type DockerCollector interface {
 	Collect() (*docker.Snapshot, error)
 }
 
@@ -44,7 +44,7 @@ type ReportSender interface {
 
 // ReportService builds the report of the host from its snapshots and sends it to the webhook.
 type ReportService struct {
-	collector          ReportCollector
+	dockerCollector    DockerCollector
 	hostCollector      HostCollector
 	easypanelCollector EasypanelCollector
 	sender             ReportSender
@@ -54,9 +54,9 @@ type ReportService struct {
 	now                func() time.Time
 }
 
-// NewReportService returns a ReportService that collects the snapshot of the Docker Engine through collector, the snapshot of the metrics of the host through hostCollector and the snapshot of the Easypanel directories through easypanelCollector, sends through sender, reads the configuration through config and builds the report with version, the host from hostname and the time from now.
-func NewReportService(collector ReportCollector, hostCollector HostCollector, easypanelCollector EasypanelCollector, sender ReportSender, config ConfigGetter, version string, hostname func() (string, error), now func() time.Time) *ReportService {
-	return &ReportService{collector: collector, hostCollector: hostCollector, easypanelCollector: easypanelCollector, sender: sender, config: config, version: version, hostname: hostname, now: now}
+// NewReportService returns a ReportService that collects the snapshot of the Docker Engine through dockerCollector, the snapshot of the metrics of the host through hostCollector and the snapshot of the Easypanel directories through easypanelCollector, sends through sender, reads the configuration through config and builds the report with version, the host from hostname and the time from now.
+func NewReportService(dockerCollector DockerCollector, hostCollector HostCollector, easypanelCollector EasypanelCollector, sender ReportSender, config ConfigGetter, version string, hostname func() (string, error), now func() time.Time) *ReportService {
+	return &ReportService{dockerCollector: dockerCollector, hostCollector: hostCollector, easypanelCollector: easypanelCollector, sender: sender, config: config, version: version, hostname: hostname, now: now}
 }
 
 // Send builds the report, sends it to WEBHOOK_URL with WEBHOOK_TOKEN and returns it; without WEBHOOK_URL it builds it, sends nothing and returns it.
@@ -102,7 +102,7 @@ func (s *ReportService) collect() (*entity.Report, error) {
 		return nil, fmt.Errorf("host: %w", err)
 	}
 
-	snapshot, err := s.collector.Collect()
+	snapshot, err := s.dockerCollector.Collect()
 	if err != nil {
 		return nil, fmt.Errorf("docker: %w", err)
 	}
