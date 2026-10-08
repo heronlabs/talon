@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -169,6 +170,16 @@ func TestReportSenderService(t *testing.T) {
 
 		if !errors.As(err, &urlError) || urlError.Op != "parse" {
 			t.Errorf("Send() = %v, want a %T from parse", err, urlError)
+		}
+	})
+	t.Run("Should fail when the report cannot be encoded as JSON", func(t *testing.T) {
+		service := NewReportSenderService(NewHTTPClient(time.Second))
+		var unsupportedValueError *json.UnsupportedValueError
+
+		_, err := service.Send("https://webhook.example.com", "", &entity.Report{System: entity.System{Load1: math.NaN()}})
+
+		if !errors.As(err, &unsupportedValueError) {
+			t.Errorf("Send() = %v, want a %T", err, unsupportedValueError)
 		}
 	})
 }

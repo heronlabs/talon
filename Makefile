@@ -60,4 +60,4 @@ test\:integration:
 
 test\:mutation:
 	rm -rf $(MUTATION_REPORT) && mkdir -p $(MUTATION_REPORT)
-	go tool gremlins unleash --output $(MUTATION_REPORT)/mutation.json -E '^main\.go$$' ./src
+	go tool gremlins unleash --timeout-coefficient 20 --output $(MUTATION_REPORT)/mutation.json -E '^main\.go$$' ./src

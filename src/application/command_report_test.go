@@ -4,16 +4,20 @@ import (
 	"bytes"
 	"errors"
 	"log/slog"
+	"math"
 	"strings"
 	"testing"
+
+	"github.com/heronlabs/talon/src/core/entity"
 )
 
 type fakeReport struct {
-	err error
+	report *entity.Report
+	err    error
 }
 
-func (f fakeReport) Send() error {
-	return f.err
+func (f fakeReport) Send() (*entity.Report, error) {
+	return f.report, f.err
 }
 
 func TestReportCommand(t *testing.T) {
@@ -39,6 +43,17 @@ func TestReportCommand(t *testing.T) {
 		}
 	})
 
+	t.Run("Should log the report as JSON in payload when it is sent", func(t *testing.T) {
+		var output bytes.Buffer
+		command := NewReportCommand(fakeReport{report: &entity.Report{Host: "vps-01"}}, slog.New(slog.NewTextHandler(&output, nil)))
+
+		_ = command.Run()
+
+		if !strings.Contains(output.String(), `status=ok payload="{\"host\":\"vps-01\",`) {
+			t.Errorf("Run() logged %q, want %q", output.String(), `status=ok payload="{\"host\":\"vps-01\",`)
+		}
+	})
+
 	t.Run("Should return 1 when the report cannot be sent", func(t *testing.T) {
 		var output bytes.Buffer
 		command := NewReportCommand(fakeReport{err: errors.New("send failed")}, slog.New(slog.NewTextHandler(&output, nil)))
@@ -58,6 +73,28 @@ func TestReportCommand(t *testing.T) {
 
 		if !strings.Contains(output.String(), `level=ERROR msg=report error="send failed"`) {
 			t.Errorf("Run() logged %q, want %q", output.String(), `level=ERROR msg=report error="send failed"`)
+		}
+	})
+
+	t.Run("Should return 1 when the report cannot be encoded as JSON", func(t *testing.T) {
+		var output bytes.Buffer
+		command := NewReportCommand(fakeReport{report: &entity.Report{System: entity.System{Load1: math.NaN()}}}, slog.New(slog.NewTextHandler(&output, nil)))
+
+		code := command.Run()
+
+		if code != 1 {
+			t.Errorf("Run() = %d, want %d", code, 1)
+		}
+	})
+
+	t.Run("Should log the error when the report cannot be encoded as JSON", func(t *testing.T) {
+		var output bytes.Buffer
+		command := NewReportCommand(fakeReport{report: &entity.Report{System: entity.System{Load1: math.NaN()}}}, slog.New(slog.NewTextHandler(&output, nil)))
+
+		_ = command.Run()
+
+		if !strings.Contains(output.String(), `level=ERROR msg=report error="json: unsupported value: NaN"`) {
+			t.Errorf("Run() logged %q, want %q", output.String(), `level=ERROR msg=report error="json: unsupported value: NaN"`)
 		}
 	})
 }

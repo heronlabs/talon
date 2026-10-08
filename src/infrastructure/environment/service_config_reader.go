@@ -7,12 +7,13 @@ import (
 	"strings"
 )
 
-// Key is a variable of the .env: its name, its default, whether it is a secret and whether it is optional.
+// Key is a variable of the .env: its name, its default, whether it is a secret, whether it is optional and the key whose value it depends on.
 type Key struct {
-	Name     string
-	Default  string
-	Secret   bool
-	Optional bool
+	Name      string
+	Default   string
+	Secret    bool
+	Optional  bool
+	DependsOn string
 }
 
 // Required reports whether the key needs a value: it has no default and is not optional.
@@ -24,11 +25,10 @@ func (k Key) Required() bool {
 func Keys() []Key {
 	return []Key{
 		{Name: "WEBHOOK_URL", Optional: true},
-		{Name: "WEBHOOK_AGENT_TOKEN", Secret: true, Optional: true},
+		{Name: "WEBHOOK_TOKEN", Secret: true, Optional: true, DependsOn: "WEBHOOK_URL"},
 		{Name: "AWS_ACCESS_KEY_ID"},
 		{Name: "AWS_SECRET_ACCESS_KEY", Secret: true},
 		{Name: "AWS_REGION", Default: "us-east-1"},
-		{Name: "INTERVAL_RECONCILE", Default: "5m"},
 		{Name: "INTERVAL_REPORT", Default: "10m"},
 	}
 }
@@ -40,15 +40,26 @@ type Prompt interface {
 
 // ConfigReaderService reads the configuration from the environment variables, .env, the defaults of the keys and, in Read, the prompt.
 type ConfigReaderService struct {
-	fsys   fs.FS
-	keys   []Key
-	getenv func(string) string
-	prompt Prompt
+	fsys     fs.FS
+	keys     []Key
+	defaults map[string]string
+	getenv   func(string) string
+	prompt   Prompt
 }
 
 // NewConfigReaderService returns a ConfigReaderService that reads .env from fsys, the keys, the environment variables through getenv and the answers through prompt.
 func NewConfigReaderService(fsys fs.FS, keys []Key, getenv func(string) string, prompt Prompt) *ConfigReaderService {
-	return &ConfigReaderService{fsys: fsys, keys: keys, getenv: getenv, prompt: prompt}
+	return &ConfigReaderService{fsys: fsys, keys: keys, defaults: defaults(keys), getenv: getenv, prompt: prompt}
+}
+
+// defaults returns the default of each of keys, by its name.
+func defaults(keys []Key) map[string]string {
+	values := map[string]string{}
+	for _, key := range keys {
+		values[key.Name] = key.Default
+	}
+
+	return values
 }
 
 // Get returns the value of one key from the environment variable, then .env, then the default, without asking; it fails only when .env cannot be parsed.
@@ -65,7 +76,7 @@ func (s *ConfigReaderService) Get(name string) (string, error) {
 	return s.fallback(name, current), nil
 }
 
-// Read returns the value of every key, from the environment variable or, when that is empty, from the prompt, with the value in .env or the default as fallback, and fails listing the required keys left empty.
+// Read returns the value of every key, from the environment variable or, when that is empty, from the prompt, with the value in .env or the default as fallback, leaving empty without asking a key whose dependency is empty, and fails listing the required keys left empty.
 func (s *ConfigReaderService) Read() (map[string]string, error) {
 	current, err := s.parse()
 	if err != nil {
@@ -74,7 +85,7 @@ func (s *ConfigReaderService) Read() (map[string]string, error) {
 
 	values := map[string]string{}
 	for _, key := range s.keys {
-		value, err := s.value(key, current)
+		value, err := s.value(key, current, values)
 		if err != nil {
 			return nil, err
 		}
@@ -89,8 +100,12 @@ func (s *ConfigReaderService) Read() (map[string]string, error) {
 	return values, nil
 }
 
-// value returns the environment variable of the key or, when that is empty, the answer of the prompt, with the value in current or the default as fallback.
-func (s *ConfigReaderService) value(key Key, current map[string]string) (string, error) {
+// value returns empty when the dependency of the key is empty in values; otherwise the environment variable of the key or, when that is empty, the answer of the prompt, with the value in current or the default as fallback.
+func (s *ConfigReaderService) value(key Key, current, values map[string]string) (string, error) {
+	if key.DependsOn != "" && values[key.DependsOn] == "" {
+		return "", nil
+	}
+
 	if value := s.getenv(key.Name); value != "" {
 		return value, nil
 	}
@@ -125,13 +140,7 @@ func (s *ConfigReaderService) fallback(name string, current map[string]string) s
 		return value
 	}
 
-	for _, key := range s.keys {
-		if key.Name == name {
-			return key.Default
-		}
-	}
-
-	return ""
+	return s.defaults[name]
 }
 
 // parse returns the values of .env, none when it does not exist.

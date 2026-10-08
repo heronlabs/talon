@@ -54,7 +54,7 @@ func TestReportService(t *testing.T) {
 		sender := &fakeReportSender{}
 		service := NewReportService(&fakeReportCollector{}, sender, config, "1.2.3", hostname, time.Now)
 
-		_ = service.Send()
+		_, _ = service.Send()
 
 		if sender.sent == nil || sender.sent.Host != "vps-01" {
 			t.Errorf("Send() sent %+v, want host %q", sender.sent, "vps-01")
@@ -70,7 +70,7 @@ func TestReportService(t *testing.T) {
 		sender := &fakeReportSender{}
 		service := NewReportService(&fakeReportCollector{}, sender, config, "1.2.3", hostname, now)
 
-		_ = service.Send()
+		_, _ = service.Send()
 
 		if sender.sent == nil || sender.sent.MeasuredAt != "2026-10-08T12:30:15.123456789Z" {
 			t.Errorf("Send() sent %+v, want measuredAt %q", sender.sent, "2026-10-08T12:30:15.123456789Z")
@@ -83,7 +83,7 @@ func TestReportService(t *testing.T) {
 		sender := &fakeReportSender{}
 		service := NewReportService(&fakeReportCollector{}, sender, config, "1.2.3", hostname, time.Now)
 
-		_ = service.Send()
+		_, _ = service.Send()
 
 		if sender.sent == nil || sender.sent.Agent.Version != "1.2.3" {
 			t.Errorf("Send() sent %+v, want agent.version %q", sender.sent, "1.2.3")
@@ -97,7 +97,7 @@ func TestReportService(t *testing.T) {
 		sender := &fakeReportSender{}
 		service := NewReportService(collector, sender, config, "1.2.3", hostname, time.Now)
 
-		_ = service.Send()
+		_, _ = service.Send()
 
 		if sender.sent == nil || sender.sent.System.DockerImagesGB != 2.5 {
 			t.Errorf("Send() sent %+v, want system.dockerImagesGB %v", sender.sent, 2.5)
@@ -110,20 +110,20 @@ func TestReportService(t *testing.T) {
 		sender := &fakeReportSender{}
 		service := NewReportService(&fakeReportCollector{}, sender, config, "1.2.3", hostname, time.Now)
 
-		_ = service.Send()
+		_, _ = service.Send()
 
 		if sender.endpoint != "https://webhook.example.com" {
 			t.Errorf("Send() sent to %q, want %q", sender.endpoint, "https://webhook.example.com")
 		}
 	})
 
-	t.Run("Should send the WEBHOOK_AGENT_TOKEN", func(t *testing.T) {
-		config := fakeConfigGetter{values: map[string]string{"WEBHOOK_URL": "https://webhook.example.com", "WEBHOOK_AGENT_TOKEN": "token"}}
+	t.Run("Should send the WEBHOOK_TOKEN", func(t *testing.T) {
+		config := fakeConfigGetter{values: map[string]string{"WEBHOOK_URL": "https://webhook.example.com", "WEBHOOK_TOKEN": "token"}}
 		hostname := func() (string, error) { return "vps-01", nil }
 		sender := &fakeReportSender{}
 		service := NewReportService(&fakeReportCollector{}, sender, config, "1.2.3", hostname, time.Now)
 
-		_ = service.Send()
+		_, _ = service.Send()
 
 		if sender.token != "token" {
 			t.Errorf("Send() sent token %q, want %q", sender.token, "token")
@@ -135,10 +135,33 @@ func TestReportService(t *testing.T) {
 		hostname := func() (string, error) { return "vps-01", nil }
 		service := NewReportService(&fakeReportCollector{}, &fakeReportSender{}, config, "1.2.3", hostname, time.Now)
 
-		err := service.Send()
+		_, err := service.Send()
 
 		if err != nil {
 			t.Errorf("Send() = %v, want nil", err)
+		}
+	})
+
+	t.Run("Should return the report when it is sent", func(t *testing.T) {
+		config := fakeConfigGetter{values: map[string]string{"WEBHOOK_URL": "https://webhook.example.com"}}
+		hostname := func() (string, error) { return "vps-01", nil }
+		service := NewReportService(&fakeReportCollector{}, &fakeReportSender{}, config, "1.2.3", hostname, time.Now)
+
+		report, _ := service.Send()
+
+		if report == nil || report.Host != "vps-01" {
+			t.Errorf("Send() = %+v, want host %q", report, "vps-01")
+		}
+	})
+
+	t.Run("Should return the report when WEBHOOK_URL is empty", func(t *testing.T) {
+		hostname := func() (string, error) { return "vps-01", nil }
+		service := NewReportService(&fakeReportCollector{}, &fakeReportSender{}, fakeConfigGetter{}, "1.2.3", hostname, time.Now)
+
+		report, _ := service.Send()
+
+		if report == nil || report.Host != "vps-01" {
+			t.Errorf("Send() = %+v, want host %q", report, "vps-01")
 		}
 	})
 
@@ -147,7 +170,7 @@ func TestReportService(t *testing.T) {
 		sender := &fakeReportSender{}
 		service := NewReportService(&fakeReportCollector{}, sender, fakeConfigGetter{}, "1.2.3", hostname, time.Now)
 
-		_ = service.Send()
+		_, _ = service.Send()
 
 		if sender.sent != nil {
 			t.Errorf("Send() sent %+v, want nothing", sender.sent)
@@ -159,7 +182,7 @@ func TestReportService(t *testing.T) {
 		collector := &fakeReportCollector{}
 		service := NewReportService(collector, &fakeReportSender{}, fakeConfigGetter{}, "1.2.3", hostname, time.Now)
 
-		_ = service.Send()
+		_, _ = service.Send()
 
 		if !collector.collected {
 			t.Errorf("Send() collected = %v, want %v", collector.collected, true)
@@ -172,20 +195,20 @@ func TestReportService(t *testing.T) {
 		hostname := func() (string, error) { return "vps-01", nil }
 		service := NewReportService(&fakeReportCollector{}, &fakeReportSender{}, config, "1.2.3", hostname, time.Now)
 
-		err := service.Send()
+		_, err := service.Send()
 
 		if !errors.Is(err, errGet) || !strings.HasPrefix(err.Error(), "config: ") {
 			t.Errorf("Send() = %v, want %v with prefix %q", err, errGet, "config: ")
 		}
 	})
 
-	t.Run("Should fail when WEBHOOK_AGENT_TOKEN cannot be read", func(t *testing.T) {
+	t.Run("Should fail when WEBHOOK_TOKEN cannot be read", func(t *testing.T) {
 		errGet := errors.New("get failed")
-		config := fakeConfigGetter{values: map[string]string{"WEBHOOK_URL": "https://webhook.example.com"}, errs: map[string]error{"WEBHOOK_AGENT_TOKEN": errGet}}
+		config := fakeConfigGetter{values: map[string]string{"WEBHOOK_URL": "https://webhook.example.com"}, errs: map[string]error{"WEBHOOK_TOKEN": errGet}}
 		hostname := func() (string, error) { return "vps-01", nil }
 		service := NewReportService(&fakeReportCollector{}, &fakeReportSender{}, config, "1.2.3", hostname, time.Now)
 
-		err := service.Send()
+		_, err := service.Send()
 
 		if !errors.Is(err, errGet) || !strings.HasPrefix(err.Error(), "config: ") {
 			t.Errorf("Send() = %v, want %v with prefix %q", err, errGet, "config: ")
@@ -193,12 +216,12 @@ func TestReportService(t *testing.T) {
 	})
 
 	t.Run("Should not collect when the configuration cannot be read", func(t *testing.T) {
-		config := fakeConfigGetter{values: map[string]string{"WEBHOOK_URL": "https://webhook.example.com"}, errs: map[string]error{"WEBHOOK_AGENT_TOKEN": errors.New("get failed")}}
+		config := fakeConfigGetter{values: map[string]string{"WEBHOOK_URL": "https://webhook.example.com"}, errs: map[string]error{"WEBHOOK_TOKEN": errors.New("get failed")}}
 		hostname := func() (string, error) { return "vps-01", nil }
 		collector := &fakeReportCollector{}
 		service := NewReportService(collector, &fakeReportSender{}, config, "1.2.3", hostname, time.Now)
 
-		_ = service.Send()
+		_, _ = service.Send()
 
 		if collector.collected {
 			t.Errorf("Send() collected = %v, want %v", collector.collected, false)
@@ -211,7 +234,7 @@ func TestReportService(t *testing.T) {
 		hostname := func() (string, error) { return "", errHostname }
 		service := NewReportService(&fakeReportCollector{}, &fakeReportSender{}, config, "1.2.3", hostname, time.Now)
 
-		err := service.Send()
+		_, err := service.Send()
 
 		if !errors.Is(err, errHostname) || !strings.HasPrefix(err.Error(), "host: ") {
 			t.Errorf("Send() = %v, want %v with prefix %q", err, errHostname, "host: ")
@@ -224,7 +247,7 @@ func TestReportService(t *testing.T) {
 		collector := &fakeReportCollector{}
 		service := NewReportService(collector, &fakeReportSender{}, config, "1.2.3", hostname, time.Now)
 
-		_ = service.Send()
+		_, _ = service.Send()
 
 		if collector.collected {
 			t.Errorf("Send() collected = %v, want %v", collector.collected, false)
@@ -237,7 +260,7 @@ func TestReportService(t *testing.T) {
 		hostname := func() (string, error) { return "vps-01", nil }
 		service := NewReportService(&fakeReportCollector{err: errCollect}, &fakeReportSender{}, config, "1.2.3", hostname, time.Now)
 
-		err := service.Send()
+		_, err := service.Send()
 
 		if !errors.Is(err, errCollect) || !strings.HasPrefix(err.Error(), "docker: ") {
 			t.Errorf("Send() = %v, want %v with prefix %q", err, errCollect, "docker: ")
@@ -250,7 +273,7 @@ func TestReportService(t *testing.T) {
 		sender := &fakeReportSender{}
 		service := NewReportService(&fakeReportCollector{err: errors.New("collect failed")}, sender, config, "1.2.3", hostname, time.Now)
 
-		_ = service.Send()
+		_, _ = service.Send()
 
 		if sender.sent != nil {
 			t.Errorf("Send() sent %+v, want nothing", sender.sent)
@@ -263,7 +286,7 @@ func TestReportService(t *testing.T) {
 		hostname := func() (string, error) { return "vps-01", nil }
 		service := NewReportService(&fakeReportCollector{}, &fakeReportSender{err: errSend}, config, "1.2.3", hostname, time.Now)
 
-		err := service.Send()
+		_, err := service.Send()
 
 		if !errors.Is(err, errSend) || !strings.HasPrefix(err.Error(), "webhook: ") {
 			t.Errorf("Send() = %v, want %v with prefix %q", err, errSend, "webhook: ")

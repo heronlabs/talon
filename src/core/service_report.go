@@ -12,7 +12,7 @@ import (
 // endpointKey and tokenKey are the keys of the configuration with the URL of the webhook and its token.
 const (
 	endpointKey = "WEBHOOK_URL"
-	tokenKey    = "WEBHOOK_AGENT_TOKEN" //nolint:gosec // G101: the name of the environment variable, not a credential
+	tokenKey    = "WEBHOOK_TOKEN" //nolint:gosec // G101: the name of the environment variable, not a credential
 )
 
 // ConfigGetter gets the value of one key of the configuration.
@@ -45,36 +45,36 @@ func NewReportService(collector ReportCollector, sender ReportSender, config Con
 	return &ReportService{collector: collector, sender: sender, config: config, version: version, hostname: hostname, now: now}
 }
 
-// Send builds the report and sends it to WEBHOOK_URL with WEBHOOK_AGENT_TOKEN; without WEBHOOK_URL it builds it and sends nothing.
-func (s *ReportService) Send() error {
+// Send builds the report, sends it to WEBHOOK_URL with WEBHOOK_TOKEN and returns it; without WEBHOOK_URL it builds it, sends nothing and returns it.
+func (s *ReportService) Send() (*entity.Report, error) {
 	endpoint, token, err := s.readConfig()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	report, err := s.collect()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if endpoint == "" {
-		return nil
+		return report, nil
 	}
 
 	if _, err := s.sender.Send(endpoint, token, report); err != nil {
-		return fmt.Errorf("webhook: %w", err)
+		return nil, fmt.Errorf("webhook: %w", err)
 	}
 
-	return nil
+	return report, nil
 }
 
-// readConfig returns the URL of the webhook and its token.
+// readConfig returns the URL of the webhook and its token, reading the token only when the URL is read.
 func (s *ReportService) readConfig() (endpoint, token string, err error) {
-	if endpoint, err = s.config.Get(endpointKey); err != nil {
-		return "", "", fmt.Errorf("config: %w", err)
+	if endpoint, err = s.config.Get(endpointKey); err == nil {
+		token, err = s.config.Get(tokenKey)
 	}
 
-	if token, err = s.config.Get(tokenKey); err != nil {
+	if err != nil {
 		return "", "", fmt.Errorf("config: %w", err)
 	}
 

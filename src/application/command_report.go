@@ -1,10 +1,15 @@
 package application
 
-import "log/slog"
+import (
+	"encoding/json"
+	"log/slog"
 
-// Report sends the report of the host.
+	"github.com/heronlabs/talon/src/core/entity"
+)
+
+// Report sends the report of the host and returns it.
 type Report interface {
-	Send() error
+	Send() (*entity.Report, error)
 }
 
 // ReportCommand runs talon report.
@@ -18,14 +23,21 @@ func NewReportCommand(report Report, logger *slog.Logger) *ReportCommand {
 	return &ReportCommand{report: report, logger: logger}
 }
 
-// Run sends the report, logs the result and returns 0 when it is sent or 1 when it is not.
+// Run sends the report, logs the result with the report as JSON in payload and returns 0 when it is sent or 1 when it is not.
 func (c *ReportCommand) Run() int {
-	if err := c.report.Send(); err != nil {
+	report, err := c.report.Send()
+	if err != nil {
 		c.logger.Error("report", "error", err)
 		return 1
 	}
 
-	c.logger.Info("report", "status", "ok")
+	payload, err := json.Marshal(report)
+	if err != nil {
+		c.logger.Error("report", "error", err)
+		return 1
+	}
+
+	c.logger.Info("report", "status", "ok", "payload", string(payload))
 
 	return 0
 }

@@ -13,7 +13,7 @@ The Heron Labs agent for Easypanel hosts. A static Go binary with four commands.
 | `talon version` | Prints the version the binary was built with. |
 | `talon setup` | Writes `/etc/talon/.env` with mode `600`, asking for every value that is not in the environment. |
 | `talon doctor` | Checks that `/etc/talon/.env` exists with mode `600` and that the Docker Engine answers `GET /_ping` on its socket within 5 seconds. |
-| `talon report` | Collects from the Docker Engine the size of the images and build cache and, for each service of each Easypanel project, its state, replicas, failed tasks, limits, memory, CPU, network, block I/O and named volumes, then posts it as JSON to `WEBHOOK_URL`, with the hostname of the machine as its host and `Authorization: Bearer` when `WEBHOOK_AGENT_TOKEN` is set. Without `WEBHOOK_URL` it sends nothing. |
+| `talon report` | Collects from the Docker Engine the size of the images and build cache and, for each service of each Easypanel project, its state, replicas, failed tasks, limits, memory, CPU, network, block I/O and named volumes, then posts it as JSON to `WEBHOOK_URL`, with the hostname of the machine as its host and `Authorization: Bearer` when `WEBHOOK_TOKEN` is set. Without `WEBHOOK_URL` it sends nothing. Either way it logs the report as JSON in `payload`. |
 
 Any other command, or none, is an error.
 
@@ -65,7 +65,7 @@ WEBHOOK_URL: https://webhook.example.com
 AWS_REGION [us-east-1]:
 ```
 
-The fallback is the value already in `.env` or, without one, the default of the key. The fallback of a token or secret key is shown as `[****]`; what you type is echoed. An empty answer keeps the fallback. A key with no default is required, except `WEBHOOK_URL` and `WEBHOOK_AGENT_TOKEN`: when any required key ends up empty, `setup` lists them and writes nothing. Otherwise it replaces `.env` with the seven keys, mode `600`. Lines of the old `.env` that are not one of the keys are dropped.
+The fallback is the value already in `.env` or, without one, the default of the key. The fallback of a token or secret key is shown as `[****]`; what you type is echoed. An empty answer keeps the fallback. When `WEBHOOK_URL` ends up empty, `setup` does not ask for `WEBHOOK_TOKEN` and leaves it empty. A key with no default is required, except `WEBHOOK_URL` and `WEBHOOK_TOKEN`: when any required key ends up empty, `setup` lists them and writes nothing. Otherwise it replaces `.env` with the six keys, mode `600`. Lines of the old `.env` that are not one of the keys are dropped.
 
 Each command logs one line with its result and exits `0` on success or `1` on failure:
 
@@ -75,7 +75,7 @@ Each command logs one line with its result and exits `0` on success or `1` on fa
 2026/10/04 20:05:40 ERROR setup error="config: missing AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY"
 2026/10/04 20:05:40 INFO doctor status=ok
 2026/10/04 20:05:40 ERROR doctor error="config: .env has mode 644, want 600"
-2026/10/04 20:05:40 INFO report status=ok
+2026/10/04 20:05:40 INFO report status=ok payload="{\"host\":\"vps-01\",...}"
 2026/10/04 20:05:40 ERROR report error="webhook: unexpected status: 401"
 2026/10/04 20:05:40 ERROR command not found command=foo
 ```

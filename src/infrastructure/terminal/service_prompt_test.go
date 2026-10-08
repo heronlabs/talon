@@ -44,7 +44,7 @@ func TestPromptService(t *testing.T) {
 		prompt := NewPromptService(strings.NewReader("first\nsecond\n"), io.Discard)
 		_, _ = prompt.Ask("WEBHOOK_URL", "", false)
 
-		answer, _ := prompt.Ask("WEBHOOK_AGENT_TOKEN", "", false)
+		answer, _ := prompt.Ask("WEBHOOK_TOKEN", "", false)
 
 		if answer != "second" {
 			t.Errorf("Ask() = %q, want %q", answer, "second")
@@ -77,10 +77,10 @@ func TestPromptService(t *testing.T) {
 		output := &bytes.Buffer{}
 		prompt := NewPromptService(strings.NewReader("\n"), output)
 
-		_, _ = prompt.Ask("WEBHOOK_AGENT_TOKEN", "token", true)
+		_, _ = prompt.Ask("WEBHOOK_TOKEN", "token", true)
 
-		if output.String() != "WEBHOOK_AGENT_TOKEN [****]: " {
-			t.Errorf("Ask() wrote %q, want %q", output.String(), "WEBHOOK_AGENT_TOKEN [****]: ")
+		if output.String() != "WEBHOOK_TOKEN [****]: " {
+			t.Errorf("Ask() wrote %q, want %q", output.String(), "WEBHOOK_TOKEN [****]: ")
 		}
 	})
 
@@ -88,17 +88,17 @@ func TestPromptService(t *testing.T) {
 		output := &bytes.Buffer{}
 		prompt := NewPromptService(strings.NewReader("\n"), output)
 
-		_, _ = prompt.Ask("WEBHOOK_AGENT_TOKEN", "", true)
+		_, _ = prompt.Ask("WEBHOOK_TOKEN", "", true)
 
-		if output.String() != "WEBHOOK_AGENT_TOKEN: " {
-			t.Errorf("Ask() wrote %q, want %q", output.String(), "WEBHOOK_AGENT_TOKEN: ")
+		if output.String() != "WEBHOOK_TOKEN: " {
+			t.Errorf("Ask() wrote %q, want %q", output.String(), "WEBHOOK_TOKEN: ")
 		}
 	})
 
 	t.Run("Should return the fallback of a secret when the answer is empty", func(t *testing.T) {
 		prompt := NewPromptService(strings.NewReader("\n"), io.Discard)
 
-		answer, _ := prompt.Ask("WEBHOOK_AGENT_TOKEN", "token", true)
+		answer, _ := prompt.Ask("WEBHOOK_TOKEN", "token", true)
 
 		if answer != "token" {
 			t.Errorf("Ask() = %q, want %q", answer, "token")

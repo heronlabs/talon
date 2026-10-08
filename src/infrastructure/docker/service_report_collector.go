@@ -8,14 +8,14 @@ import (
 // ServiceNameLabel is the label with the name of the Swarm service of a container.
 const ServiceNameLabel = "com.docker.swarm.service.name"
 
-// The paths of the Engine API, the filter of the containers of the Swarm services, and the state of a running container.
+// The paths of the Engine API, the filter of the containers by a label, and the state of a running container.
 const (
 	diskUsagePath    = "/system/df"
 	servicesPath     = "/services?status=true"
 	tasksPath        = "/tasks"
 	containersPath   = "/containers/json?all=true&filters="
 	statsPath        = "/containers/%s/stats?stream=false"
-	containersFilter = `{"label":["` + ServiceNameLabel + `"]}`
+	containersFilter = `{"label":["%s"]}`
 	runningState     = "running"
 )
 
@@ -44,7 +44,7 @@ func (s *ReportCollectorService) Collect() (*Snapshot, error) {
 		return nil, err
 	}
 
-	if err := s.client.Get(containersPath+url.QueryEscape(containersFilter), &snapshot.Containers); err != nil {
+	if err := s.client.Get(containersPath+url.QueryEscape(fmt.Sprintf(containersFilter, ServiceNameLabel)), &snapshot.Containers); err != nil {
 		return nil, err
 	}
 

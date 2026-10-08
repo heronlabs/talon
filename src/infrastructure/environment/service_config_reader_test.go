@@ -41,11 +41,10 @@ func TestConfigReaderService(t *testing.T) {
 	t.Run("Should list every key in the order setup asks for them", func(t *testing.T) {
 		want := []Key{
 			{Name: "WEBHOOK_URL", Optional: true},
-			{Name: "WEBHOOK_AGENT_TOKEN", Secret: true, Optional: true},
+			{Name: "WEBHOOK_TOKEN", Secret: true, Optional: true, DependsOn: "WEBHOOK_URL"},
 			{Name: "AWS_ACCESS_KEY_ID"},
 			{Name: "AWS_SECRET_ACCESS_KEY", Secret: true},
 			{Name: "AWS_REGION", Default: "us-east-1"},
-			{Name: "INTERVAL_RECONCILE", Default: "5m"},
 			{Name: "INTERVAL_REPORT", Default: "10m"},
 		}
 
@@ -143,10 +142,10 @@ func TestConfigReaderService(t *testing.T) {
 	})
 
 	t.Run("Should tell the prompt which keys are secret", func(t *testing.T) {
-		secretKeys := []Key{{Name: "WEBHOOK_AGENT_TOKEN", Secret: true}, {Name: "AWS_REGION", Default: "us-east-1"}}
-		prompt := fakePrompt{answers: map[string]string{"WEBHOOK_AGENT_TOKEN": "token"}, secrets: map[string]bool{}}
+		secretKeys := []Key{{Name: "WEBHOOK_TOKEN", Secret: true}, {Name: "AWS_REGION", Default: "us-east-1"}}
+		prompt := fakePrompt{answers: map[string]string{"WEBHOOK_TOKEN": "token"}, secrets: map[string]bool{}}
 		reader := NewConfigReaderService(fstest.MapFS{}, secretKeys, fakeEnv{}.Getenv, prompt)
-		want := map[string]bool{"WEBHOOK_AGENT_TOKEN": true, "AWS_REGION": false}
+		want := map[string]bool{"WEBHOOK_TOKEN": true, "AWS_REGION": false}
 
 		_, _ = reader.Read()
 
@@ -193,13 +192,42 @@ func TestConfigReaderService(t *testing.T) {
 	})
 
 	t.Run("Should fail listing the required keys without a value", func(t *testing.T) {
-		required := []Key{{Name: "WEBHOOK_URL"}, {Name: "WEBHOOK_AGENT_TOKEN"}, {Name: "AWS_REGION", Default: "us-east-1"}}
+		required := []Key{{Name: "WEBHOOK_URL"}, {Name: "WEBHOOK_TOKEN"}, {Name: "AWS_REGION", Default: "us-east-1"}}
 		reader := NewConfigReaderService(fstest.MapFS{}, required, fakeEnv{}.Getenv, fakePrompt{})
 
 		_, err := reader.Read()
 
-		if err == nil || err.Error() != "missing WEBHOOK_URL, WEBHOOK_AGENT_TOKEN" {
-			t.Errorf("Read() = %v, want %q", err, "missing WEBHOOK_URL, WEBHOOK_AGENT_TOKEN")
+		if err == nil || err.Error() != "missing WEBHOOK_URL, WEBHOOK_TOKEN" {
+			t.Errorf("Read() = %v, want %q", err, "missing WEBHOOK_URL, WEBHOOK_TOKEN")
+		}
+	})
+
+	t.Run("Should leave empty without asking a key whose dependency is empty", func(t *testing.T) {
+		keys := []Key{{Name: "WEBHOOK_URL", Optional: true}, {Name: "WEBHOOK_TOKEN", Secret: true, Optional: true, DependsOn: "WEBHOOK_URL"}}
+		fsys := fstest.MapFS{".env": {Data: []byte("WEBHOOK_TOKEN=token\n")}}
+		env := fakeEnv{"WEBHOOK_TOKEN": "env-token"}
+		prompt := fakePrompt{answers: map[string]string{"WEBHOOK_TOKEN": "typed-token"}}
+		reader := NewConfigReaderService(fsys, keys, env.Getenv, prompt)
+		want := map[string]string{"WEBHOOK_URL": "", "WEBHOOK_TOKEN": ""}
+
+		values, _ := reader.Read()
+
+		if !maps.Equal(values, want) {
+			t.Errorf("Read() = %v, want %v", values, want)
+		}
+	})
+
+	t.Run("Should ask for a key whose dependency has a value", func(t *testing.T) {
+		keys := []Key{{Name: "WEBHOOK_URL", Optional: true}, {Name: "WEBHOOK_TOKEN", Secret: true, Optional: true, DependsOn: "WEBHOOK_URL"}}
+		env := fakeEnv{"WEBHOOK_URL": "https://webhook.example.com"}
+		prompt := fakePrompt{answers: map[string]string{"WEBHOOK_TOKEN": "token"}}
+		reader := NewConfigReaderService(fstest.MapFS{}, keys, env.Getenv, prompt)
+		want := map[string]string{"WEBHOOK_URL": "https://webhook.example.com", "WEBHOOK_TOKEN": "token"}
+
+		values, _ := reader.Read()
+
+		if !maps.Equal(values, want) {
+			t.Errorf("Read() = %v, want %v", values, want)
 		}
 	})
 
