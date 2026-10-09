@@ -1,3 +1,9 @@
+## v0.8.1 (2026-10-09)
+
+### Bug Fixes
+
+* fix: bump the Go toolchain to go1.27.2 to clear govulncheck advisories (#17) (cfcf5b0964f3711675bcabc90045d910a4566900)
+
 ## v0.8.0 (2026-10-09)
 
 ### Features
