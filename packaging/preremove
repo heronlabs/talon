@@ -2,5 +2,5 @@
 set -e
 
 if [ "$1" = remove ] && [ -d /run/systemd/system ]; then
-  deb-systemd-invoke stop talon-upgrade.timer >/dev/null || true
+  deb-systemd-invoke stop talon-upgrade.timer talon.service >/dev/null || true
 fi

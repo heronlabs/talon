@@ -1,10 +1,13 @@
 package application
 
-import "log/slog"
+import (
+	"context"
+	"log/slog"
+)
 
 // Doctor checks the configuration and the Docker Engine of the host.
 type Doctor interface {
-	Check() error
+	Check(ctx context.Context) error
 }
 
 // DoctorCommand runs talon doctor.
@@ -18,9 +21,9 @@ func NewDoctorCommand(doctor Doctor, logger *slog.Logger) *DoctorCommand {
 	return &DoctorCommand{doctor: doctor, logger: logger}
 }
 
-// Run checks the host, logs the result and returns 0 when the check passes or 1 when it fails.
-func (c *DoctorCommand) Run() int {
-	if err := c.doctor.Check(); err != nil {
+// Run checks the host with ctx, logs the result and returns 0 when the check passes or 1 when it fails.
+func (c *DoctorCommand) Run(ctx context.Context) int {
+	if err := c.doctor.Check(ctx); err != nil {
 		c.logger.Error("doctor", "error", err)
 		return 1
 	}

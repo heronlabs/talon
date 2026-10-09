@@ -235,11 +235,26 @@ func TestConfigReaderService(t *testing.T) {
 		keys := []Key{{Name: "WEBHOOK_URL"}, {Name: "AWS_REGION", Default: "us-east-1"}}
 		fsys := fstest.MapFS{".env": {Data: []byte("WEBHOOK_URL=https://webhook.example.com\n")}}
 		reader := NewConfigReaderService(fsys, keys, fakeEnv{}.Getenv, fakePrompt{})
+		want := map[string]string{"WEBHOOK_URL": "https://webhook.example.com"}
 
-		value, _ := reader.Get("WEBHOOK_URL")
+		values, _ := reader.Get("WEBHOOK_URL")
 
-		if value != "https://webhook.example.com" {
-			t.Errorf("Get() = %q, want %q", value, "https://webhook.example.com")
+		if !maps.Equal(values, want) {
+			t.Errorf("Get() = %v, want %v", values, want)
+		}
+	})
+
+	t.Run("Should get the value of each key asked for", func(t *testing.T) {
+		keys := []Key{{Name: "WEBHOOK_URL"}, {Name: "WEBHOOK_TOKEN"}, {Name: "AWS_REGION", Default: "us-east-1"}}
+		fsys := fstest.MapFS{".env": {Data: []byte("WEBHOOK_URL=https://webhook.example.com\n")}}
+		env := fakeEnv{"WEBHOOK_TOKEN": "token"}
+		reader := NewConfigReaderService(fsys, keys, env.Getenv, fakePrompt{err: errors.New("asked")})
+		want := map[string]string{"WEBHOOK_URL": "https://webhook.example.com", "WEBHOOK_TOKEN": "token", "AWS_REGION": "us-east-1"}
+
+		values, _ := reader.Get("WEBHOOK_URL", "WEBHOOK_TOKEN", "AWS_REGION")
+
+		if !maps.Equal(values, want) {
+			t.Errorf("Get() = %v, want %v", values, want)
 		}
 	})
 
@@ -247,22 +262,24 @@ func TestConfigReaderService(t *testing.T) {
 		keys := []Key{{Name: "WEBHOOK_URL"}, {Name: "AWS_REGION", Default: "us-east-1"}}
 		fsys := fstest.MapFS{".env": {Data: []byte("AWS_REGION=sa-east-1\n")}}
 		reader := NewConfigReaderService(fsys, keys, fakeEnv{}.Getenv, fakePrompt{})
+		want := map[string]string{"WEBHOOK_URL": ""}
 
-		value, _ := reader.Get("WEBHOOK_URL")
+		values, _ := reader.Get("WEBHOOK_URL")
 
-		if value != "" {
-			t.Errorf("Get() = %q, want %q", value, "")
+		if !maps.Equal(values, want) {
+			t.Errorf("Get() = %v, want %v", values, want)
 		}
 	})
 
-	t.Run("Should get empty when .env does not exist", func(t *testing.T) {
+	t.Run("Should get the default when .env does not exist", func(t *testing.T) {
 		keys := []Key{{Name: "WEBHOOK_URL"}, {Name: "AWS_REGION", Default: "us-east-1"}}
 		reader := NewConfigReaderService(fstest.MapFS{}, keys, fakeEnv{}.Getenv, fakePrompt{})
+		want := map[string]string{"WEBHOOK_URL": "", "AWS_REGION": "us-east-1"}
 
-		value, _ := reader.Get("WEBHOOK_URL")
+		values, _ := reader.Get("WEBHOOK_URL", "AWS_REGION")
 
-		if value != "" {
-			t.Errorf("Get() = %q, want %q", value, "")
+		if !maps.Equal(values, want) {
+			t.Errorf("Get() = %v, want %v", values, want)
 		}
 	})
 
@@ -270,11 +287,12 @@ func TestConfigReaderService(t *testing.T) {
 		keys := []Key{{Name: "WEBHOOK_URL"}, {Name: "AWS_REGION", Default: "us-east-1"}}
 		fsys := fstest.MapFS{".env": {Data: []byte("WEBHOOK_URL=https://webhook.example.com\n")}}
 		reader := NewConfigReaderService(fsys, keys, fakeEnv{}.Getenv, fakePrompt{err: errors.New("asked")})
+		want := map[string]string{"AWS_ACCESS_KEY_ID": ""}
 
-		value, err := reader.Get("AWS_ACCESS_KEY_ID")
+		values, err := reader.Get("AWS_ACCESS_KEY_ID")
 
-		if value != "" || err != nil {
-			t.Errorf("Get() = %q, %v; want %q, nil", value, err, "")
+		if !maps.Equal(values, want) || err != nil {
+			t.Errorf("Get() = %v, %v; want %v, nil", values, err, want)
 		}
 	})
 
@@ -295,11 +313,12 @@ func TestConfigReaderService(t *testing.T) {
 		fsys := fstest.MapFS{".env": {Data: []byte("WEBHOOK_URL=https://webhook.example.com\n")}}
 		env := fakeEnv{"WEBHOOK_URL": "https://env.example.com"}
 		reader := NewConfigReaderService(fsys, keys, env.Getenv, fakePrompt{err: errors.New("asked")})
+		want := map[string]string{"WEBHOOK_URL": "https://env.example.com"}
 
-		value, _ := reader.Get("WEBHOOK_URL")
+		values, _ := reader.Get("WEBHOOK_URL")
 
-		if value != "https://env.example.com" {
-			t.Errorf("Get() = %q, want %q", value, "https://env.example.com")
+		if !maps.Equal(values, want) {
+			t.Errorf("Get() = %v, want %v", values, want)
 		}
 	})
 
@@ -307,11 +326,12 @@ func TestConfigReaderService(t *testing.T) {
 		keys := []Key{{Name: "WEBHOOK_URL"}, {Name: "AWS_REGION", Default: "us-east-1"}}
 		fsys := fstest.MapFS{".env": {Data: []byte("WEBHOOK_URL=https://webhook.example.com\n")}}
 		reader := NewConfigReaderService(fsys, keys, fakeEnv{}.Getenv, fakePrompt{err: errors.New("asked")})
+		want := map[string]string{"AWS_REGION": "us-east-1"}
 
-		value, _ := reader.Get("AWS_REGION")
+		values, _ := reader.Get("AWS_REGION")
 
-		if value != "us-east-1" {
-			t.Errorf("Get() = %q, want %q", value, "us-east-1")
+		if !maps.Equal(values, want) {
+			t.Errorf("Get() = %v, want %v", values, want)
 		}
 	})
 
@@ -319,11 +339,12 @@ func TestConfigReaderService(t *testing.T) {
 		keys := []Key{{Name: "WEBHOOK_URL"}, {Name: "AWS_REGION", Default: "us-east-1"}}
 		fsys := fstest.MapFS{".env": {Data: []byte("AWS_REGION=sa-east-1\n")}}
 		reader := NewConfigReaderService(fsys, keys, fakeEnv{}.Getenv, fakePrompt{err: errors.New("asked")})
+		want := map[string]string{"AWS_REGION": "sa-east-1"}
 
-		value, _ := reader.Get("AWS_REGION")
+		values, _ := reader.Get("AWS_REGION")
 
-		if value != "sa-east-1" {
-			t.Errorf("Get() = %q, want %q", value, "sa-east-1")
+		if !maps.Equal(values, want) {
+			t.Errorf("Get() = %v, want %v", values, want)
 		}
 	})
 

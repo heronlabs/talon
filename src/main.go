@@ -1,8 +1,11 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/heronlabs/talon/src/application"
@@ -62,29 +65,41 @@ func main() {
 	coreDoctorService := core.NewDoctorService(osDirFs, dockerHealthCheckService)
 	coreSetupService := core.NewSetupService(environmentConfigReaderService, environmentConfigWriterService)
 	coreReportService := core.NewReportService(dockerReportCollectorService, hostReportCollectorService, easypanelReportCollectorService, webhookReportSenderService, environmentConfigReaderService, version, os.Hostname, time.Now)
+	coreScheduleService := core.NewScheduleService(environmentConfigReaderService)
 
 	versionCommand := application.NewVersionCommand(version, logger)
 	doctorCommand := application.NewDoctorCommand(coreDoctorService, logger)
 	setupCommand := application.NewSetupCommand(coreSetupService, logger)
 	reportCommand := application.NewReportCommand(coreReportService, logger)
+	daemonCommand := application.NewDaemonCommand(coreScheduleService, reportCommand, time.Tick, logger)
 
 	switch command {
 	case "version":
 		os.Exit(versionCommand.Run())
 
 	case "doctor":
-		os.Exit(doctorCommand.Run())
+		os.Exit(doctorCommand.Run(signalContext()))
 
 	case "setup":
 		os.Exit(setupCommand.Run())
 
 	case "report":
-		os.Exit(reportCommand.Run())
+		os.Exit(reportCommand.Run(signalContext()))
+
+	case "daemon":
+		os.Exit(daemonCommand.Run(signalContext()))
 
 	default:
 		logger.Error("command not found", "command", command)
 		os.Exit(1)
 	}
+}
+
+// signalContext returns a context that is done on SIGTERM or SIGINT; only the commands that take it catch those signals, and the process exits after the command without releasing them.
+func signalContext() context.Context {
+	ctx, _ := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+
+	return ctx
 }
 
 // envOrDefault returns the environment variable name or, when it is empty, fallback.

@@ -1,6 +1,7 @@
 package webhook
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -46,7 +47,7 @@ func TestReportSenderService(t *testing.T) {
 		service := NewReportSenderService(NewHTTPClient(time.Second))
 		report := &entity.Report{Host: "vps-01", MeasuredAt: "2026-10-08T12:30:15.123456789Z", Agent: entity.Agent{Version: "1.2.3"}, Projects: []entity.Project{}}
 
-		_, _ = service.Send(webhookURL+"/reports", "", report)
+		_, _ = service.Send(t.Context(), webhookURL+"/reports", "", report)
 		var decoded entity.Report
 		_ = json.Unmarshal(received.body, &decoded)
 
@@ -59,7 +60,7 @@ func TestReportSenderService(t *testing.T) {
 		webhookURL, received := startWebhook(t, http.StatusOK, `{"data":{}}`)
 		service := NewReportSenderService(NewHTTPClient(time.Second))
 
-		_, _ = service.Send(webhookURL, "", &entity.Report{})
+		_, _ = service.Send(t.Context(), webhookURL, "", &entity.Report{})
 
 		if received.header.Get("Content-Type") != "application/json" {
 			t.Errorf("Send() sent Content-Type %q, want %q", received.header.Get("Content-Type"), "application/json")
@@ -70,7 +71,7 @@ func TestReportSenderService(t *testing.T) {
 		webhookURL, received := startWebhook(t, http.StatusOK, `{"data":{}}`)
 		service := NewReportSenderService(NewHTTPClient(time.Second))
 
-		_, _ = service.Send(webhookURL, "token", &entity.Report{})
+		_, _ = service.Send(t.Context(), webhookURL, "token", &entity.Report{})
 
 		if received.header.Get("Authorization") != "Bearer token" {
 			t.Errorf("Send() sent Authorization %q, want %q", received.header.Get("Authorization"), "Bearer token")
@@ -81,7 +82,7 @@ func TestReportSenderService(t *testing.T) {
 		webhookURL, received := startWebhook(t, http.StatusOK, `{"data":{}}`)
 		service := NewReportSenderService(NewHTTPClient(time.Second))
 
-		_, _ = service.Send(webhookURL, "", &entity.Report{})
+		_, _ = service.Send(t.Context(), webhookURL, "", &entity.Report{})
 
 		if received.header == nil || received.header.Values("Authorization") != nil {
 			t.Errorf("Send() sent headers %v, want a request without Authorization", received.header)
@@ -98,7 +99,7 @@ func TestReportSenderService(t *testing.T) {
 		want.Data.Matched = []string{"shop"}
 		want.Data.Unmatched = []string{"blog"}
 
-		response, _ := service.Send(webhookURL, "", &entity.Report{})
+		response, _ := service.Send(t.Context(), webhookURL, "", &entity.Report{})
 
 		if response == nil || !reflect.DeepEqual(*response, want) {
 			t.Errorf("Send() = %+v, want %+v", response, want)
@@ -109,7 +110,7 @@ func TestReportSenderService(t *testing.T) {
 		webhookURL, _ := startWebhook(t, http.StatusAccepted, `{"data":{}}`)
 		service := NewReportSenderService(NewHTTPClient(time.Second))
 
-		_, err := service.Send(webhookURL, "", &entity.Report{})
+		_, err := service.Send(t.Context(), webhookURL, "", &entity.Report{})
 
 		if err != nil {
 			t.Errorf("Send() = %v, want nil", err)
@@ -120,7 +121,7 @@ func TestReportSenderService(t *testing.T) {
 		webhookURL, _ := startWebhook(t, http.StatusUnauthorized, `{"error":"unauthorized"}`)
 		service := NewReportSenderService(NewHTTPClient(time.Second))
 
-		_, err := service.Send(webhookURL, "wrong", &entity.Report{})
+		_, err := service.Send(t.Context(), webhookURL, "wrong", &entity.Report{})
 
 		if !errors.Is(err, ErrUnexpectedStatus) {
 			t.Errorf("Send() = %v, want %v", err, ErrUnexpectedStatus)
@@ -131,7 +132,7 @@ func TestReportSenderService(t *testing.T) {
 		webhookURL, _ := startWebhook(t, http.StatusMultipleChoices, `{"data":{}}`)
 		service := NewReportSenderService(NewHTTPClient(time.Second))
 
-		_, err := service.Send(webhookURL, "", &entity.Report{})
+		_, err := service.Send(t.Context(), webhookURL, "", &entity.Report{})
 
 		if !errors.Is(err, ErrUnexpectedStatus) {
 			t.Errorf("Send() = %v, want %v", err, ErrUnexpectedStatus)
@@ -143,7 +144,7 @@ func TestReportSenderService(t *testing.T) {
 		service := NewReportSenderService(NewHTTPClient(time.Second))
 		var syntaxError *json.SyntaxError
 
-		_, err := service.Send(webhookURL, "", &entity.Report{})
+		_, err := service.Send(t.Context(), webhookURL, "", &entity.Report{})
 
 		if !errors.As(err, &syntaxError) {
 			t.Errorf("Send() = %v, want a %T", err, syntaxError)
@@ -155,10 +156,23 @@ func TestReportSenderService(t *testing.T) {
 		server.Close()
 		service := NewReportSenderService(NewHTTPClient(time.Second))
 
-		_, err := service.Send(server.URL, "", &entity.Report{})
+		_, err := service.Send(t.Context(), server.URL, "", &entity.Report{})
 
 		if !errors.Is(err, syscall.ECONNREFUSED) {
 			t.Errorf("Send() = %v, want %v", err, syscall.ECONNREFUSED)
+		}
+	})
+
+	t.Run("Should fail when ctx is done", func(t *testing.T) {
+		webhookURL, _ := startWebhook(t, http.StatusOK, `{"data":{}}`)
+		service := NewReportSenderService(NewHTTPClient(time.Second))
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+
+		_, err := service.Send(ctx, webhookURL, "", &entity.Report{})
+
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("Send() = %v, want %v", err, context.Canceled)
 		}
 	})
 
@@ -166,7 +180,7 @@ func TestReportSenderService(t *testing.T) {
 		service := NewReportSenderService(NewHTTPClient(time.Second))
 		var urlError *url.Error
 
-		_, err := service.Send("://webhook.example.com", "", &entity.Report{})
+		_, err := service.Send(t.Context(), "://webhook.example.com", "", &entity.Report{})
 
 		if !errors.As(err, &urlError) || urlError.Op != "parse" {
 			t.Errorf("Send() = %v, want a %T from parse", err, urlError)
@@ -176,7 +190,7 @@ func TestReportSenderService(t *testing.T) {
 		service := NewReportSenderService(NewHTTPClient(time.Second))
 		var unsupportedValueError *json.UnsupportedValueError
 
-		_, err := service.Send("https://webhook.example.com", "", &entity.Report{System: entity.System{Load1: math.NaN()}})
+		_, err := service.Send(t.Context(), "https://webhook.example.com", "", &entity.Report{System: entity.System{Load1: math.NaN()}})
 
 		if !errors.As(err, &unsupportedValueError) {
 			t.Errorf("Send() = %v, want a %T", err, unsupportedValueError)

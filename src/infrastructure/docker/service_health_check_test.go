@@ -53,7 +53,7 @@ func TestHealthCheckService(t *testing.T) {
 		})
 		service := NewHealthCheckService(NewSocketClient(socketPath, time.Second))
 
-		err := service.Ping()
+		err := service.Ping(t.Context())
 
 		if err != nil {
 			t.Errorf("Ping() = %v, want nil", err)
@@ -63,7 +63,7 @@ func TestHealthCheckService(t *testing.T) {
 	t.Run("Should fail when socket does not exist", func(t *testing.T) {
 		service := NewHealthCheckService(NewSocketClient(newSocketPath(t), time.Second))
 
-		err := service.Ping()
+		err := service.Ping(t.Context())
 
 		if !errors.Is(err, fs.ErrNotExist) {
 			t.Errorf("Ping() = %v, want %v", err, fs.ErrNotExist)
@@ -76,10 +76,23 @@ func TestHealthCheckService(t *testing.T) {
 		})
 		service := NewHealthCheckService(NewSocketClient(socketPath, time.Second))
 
-		err := service.Ping()
+		err := service.Ping(t.Context())
 
 		if !errors.Is(err, ErrUnexpectedStatus) {
 			t.Errorf("Ping() = %v, want %v", err, ErrUnexpectedStatus)
+		}
+	})
+
+	t.Run("Should fail with ErrNotFound when Docker responds 404", func(t *testing.T) {
+		socketPath := startEngine(t, func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+		})
+		service := NewHealthCheckService(NewSocketClient(socketPath, time.Second))
+
+		err := service.Ping(t.Context())
+
+		if !errors.Is(err, ErrNotFound) {
+			t.Errorf("Ping() = %v, want %v", err, ErrNotFound)
 		}
 	})
 
@@ -89,10 +102,25 @@ func TestHealthCheckService(t *testing.T) {
 		})
 		service := NewHealthCheckService(NewSocketClient(socketPath, 50*time.Millisecond))
 
-		err := service.Ping()
+		err := service.Ping(t.Context())
 
 		if !errors.Is(err, context.DeadlineExceeded) {
 			t.Errorf("Ping() = %v, want %v", err, context.DeadlineExceeded)
+		}
+	})
+
+	t.Run("Should fail when ctx is done", func(t *testing.T) {
+		socketPath := startEngine(t, func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})
+		service := NewHealthCheckService(NewSocketClient(socketPath, time.Second))
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+
+		err := service.Ping(ctx)
+
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("Ping() = %v, want %v", err, context.Canceled)
 		}
 	})
 }

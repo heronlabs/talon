@@ -36,10 +36,11 @@ func serveOnSocket(t *testing.T, handler http.Handler) string {
 	return socketPath
 }
 
-func failOn(pattern string, mux *http.ServeMux) http.Handler {
+func replyOn(pattern string, status int, body string, mux *http.ServeMux) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if _, matched := mux.Handler(r); matched == pattern {
-			w.WriteHeader(http.StatusInternalServerError)
+			w.WriteHeader(status)
+			_, _ = io.WriteString(w, body)
 			return
 		}
 
@@ -54,6 +55,12 @@ func startReportEngine(t *testing.T) string {
 }
 
 func startFailingReportEngine(t *testing.T, failing string) string {
+	t.Helper()
+
+	return startReportEngineReplying(t, failing, http.StatusInternalServerError, "")
+}
+
+func startReportEngineReplying(t *testing.T, pattern string, status int, body string) string {
 	t.Helper()
 
 	mux := http.NewServeMux()
@@ -73,7 +80,7 @@ func startFailingReportEngine(t *testing.T, failing string) string {
 		_, _ = io.WriteString(w, `{"memory_stats":{"usage":104857600}}`)
 	})
 
-	return serveOnSocket(t, failOn(failing, mux))
+	return serveOnSocket(t, replyOn(pattern, status, body, mux))
 }
 
 func startRichReportEngine(t *testing.T) string {
@@ -516,6 +523,50 @@ func TestReportCommand(t *testing.T) {
 		}
 	})
 
+	t.Run("Should fail when the Docker Engine answers 404 to the list of the services", func(t *testing.T) {
+		dir := t.TempDir()
+		writeEnvContent(t, dir, "")
+		unsetKeys(t)
+		t.Setenv("DOCKER_SOCKET", startReportEngineReplying(t, "GET /services", http.StatusNotFound, ""))
+		t.Setenv("TALON_HOST_ROOT", newHostRoot(t))
+
+		out, code := cli.Run(t, dir, "report")
+
+		if code != 1 || !strings.Contains(out, `ERROR report error="docker: not found"`) {
+			t.Errorf("exit %d, output %q; want exit 1 with not found", code, out)
+		}
+	})
+
+	t.Run("Should post the report without the stats of a container whose stats answer 404", func(t *testing.T) {
+		dir := t.TempDir()
+		webhookURL, received := startWebhook(t, http.StatusOK)
+		writeEnvContent(t, dir, "WEBHOOK_URL="+webhookURL+"\n")
+		unsetKeys(t)
+		t.Setenv("DOCKER_SOCKET", startReportEngineReplying(t, "GET /containers/{id}/stats", http.StatusNotFound, ""))
+		t.Setenv("TALON_HOST_ROOT", newHostRoot(t))
+		wantAPI := `{"name":"api","managed":false,"state":"running","replicasRunning":1,"replicasDesired":1,"recentTaskFailures":0,"memoryUsedMiB":0,`
+
+		out, code := cli.Run(t, dir, "report")
+
+		if code != 0 || !strings.Contains(out, "INFO report status=ok") || !strings.Contains(string(received.body), wantAPI) {
+			t.Errorf("exit %d, output %q, body %s; want exit 0 with status=ok and %s", code, out, received.body, wantAPI)
+		}
+	})
+
+	t.Run("Should fail when the ID of a running container is not a valid path", func(t *testing.T) {
+		dir := t.TempDir()
+		writeEnvContent(t, dir, "")
+		unsetKeys(t)
+		t.Setenv("DOCKER_SOCKET", startReportEngineReplying(t, "GET /containers/json", http.StatusOK, `[{"Id":"%zz","State":"running","Labels":{"com.docker.swarm.service.name":"shop_api"}}]`))
+		t.Setenv("TALON_HOST_ROOT", newHostRoot(t))
+
+		out, code := cli.Run(t, dir, "report")
+
+		if code != 1 || !strings.Contains(out, `ERROR report error="docker: parse `) || !strings.Contains(out, "invalid URL escape") {
+			t.Errorf("exit %d, output %q; want exit 1 with invalid URL escape", code, out)
+		}
+	})
+
 	t.Run("Should post the memory, swap, disk, load and uptime of the host", func(t *testing.T) {
 		dir := t.TempDir()
 		webhookURL, received := startWebhook(t, http.StatusOK)
@@ -821,17 +872,19 @@ func TestReportCommand(t *testing.T) {
 		}
 	})
 
-	t.Run("Should fail when the archive of the easypanel container answers 404", func(t *testing.T) {
+	t.Run("Should post the Easypanel version and whether it is supported as null when the archive of the easypanel container answers 404", func(t *testing.T) {
 		dir := t.TempDir()
-		writeEnvContent(t, dir, "")
+		webhookURL, received := startWebhook(t, http.StatusOK)
+		writeEnvContent(t, dir, "WEBHOOK_URL="+webhookURL+"\n")
 		unsetKeys(t)
 		t.Setenv("DOCKER_SOCKET", startEasypanelReportEngine(t, "running", http.StatusNotFound, ""))
 		t.Setenv("TALON_HOST_ROOT", newHostRoot(t))
+		wantAgent := `"agent":{"version":"1.2.3","easypanelVersion":null,"easypanelSupported":null,"lastReconcile":null}`
 
 		out, code := cli.Run(t, dir, "report")
 
-		if code != 1 || !strings.Contains(out, `ERROR report error="docker: unexpected status: 404"`) {
-			t.Errorf("exit %d, output %q; want exit 1 with unexpected status: 404", code, out)
+		if code != 0 || !strings.Contains(out, "INFO report status=ok") || !strings.Contains(string(received.body), wantAgent) {
+			t.Errorf("exit %d, output %q, body %s; want exit 0 with status=ok and %s", code, out, received.body, wantAgent)
 		}
 	})
 

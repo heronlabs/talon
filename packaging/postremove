@@ -7,10 +7,10 @@ fi
 
 case "$1" in
   remove)
-    deb-systemd-helper mask talon-upgrade.timer >/dev/null || true
+    deb-systemd-helper mask talon-upgrade.timer talon.service >/dev/null || true
     ;;
   purge)
-    deb-systemd-helper purge talon-upgrade.timer >/dev/null || true
-    deb-systemd-helper unmask talon-upgrade.timer >/dev/null || true
+    deb-systemd-helper purge talon-upgrade.timer talon.service >/dev/null || true
+    deb-systemd-helper unmask talon-upgrade.timer talon.service >/dev/null || true
     ;;
 esac
