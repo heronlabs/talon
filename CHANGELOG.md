@@ -1,3 +1,9 @@
+## v0.9.0 (2026-10-09)
+
+### Features
+
+* feat: add talon daemon and keep the report alive through deploys (#16) (daf7f94df704dd5e2c928c627530282647eaf84e)
+
 ## v0.8.1 (2026-10-09)
 
 ### Bug Fixes
