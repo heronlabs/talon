@@ -1,6 +1,9 @@
 package entity
 
-import "github.com/heronlabs/talon/src/infrastructure/docker"
+import (
+	"github.com/heronlabs/talon/src/infrastructure/docker"
+	"github.com/heronlabs/talon/src/infrastructure/host"
+)
 
 // System holds the memory, swap, disk, load and uptime of the host and the size of the Docker images and build cache.
 type System struct {
@@ -18,9 +21,21 @@ type System struct {
 	DockerBuildCacheGB float64 `json:"dockerBuildCacheGB"`
 }
 
-// NewSystem returns the system with the size of the Docker images and of the build cache of usage in GB.
-func NewSystem(usage docker.DiskUsage) System {
+// NewSystem returns the system with the memory and the swap of hostSnapshot in GiB, each used as its total less its available or free, the disk of hostSnapshot in GB, used as its total less its free, its load, its uptime in whole seconds, and the size of the Docker images and of the build cache of usage in GB.
+func NewSystem(usage docker.DiskUsage, hostSnapshot host.Snapshot) System {
+	memory := hostSnapshot.Memory
+	disk := hostSnapshot.Disk
 	return System{
+		RAMTotalGiB:        float64(memory.MemTotal) / kibPerGiB,
+		RAMUsedGiB:         float64(memory.MemTotal-memory.MemAvailable) / kibPerGiB,
+		SwapTotalGiB:       float64(memory.SwapTotal) / kibPerGiB,
+		SwapUsedGiB:        float64(memory.SwapTotal-memory.SwapFree) / kibPerGiB,
+		DiskTotalGB:        float64(disk.Total) / bytesPerGB,
+		DiskUsedGB:         float64(disk.Total-disk.Free) / bytesPerGB,
+		Load1:              hostSnapshot.Load.One,
+		Load5:              hostSnapshot.Load.Five,
+		Load15:             hostSnapshot.Load.Fifteen,
+		UptimeSeconds:      int64(hostSnapshot.Uptime.Seconds),
 		DockerImagesGB:     float64(usage.LayersSize) / bytesPerGB,
 		DockerBuildCacheGB: float64(buildCacheSize(usage)) / bytesPerGB,
 	}

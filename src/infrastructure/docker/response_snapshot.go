@@ -12,4 +12,6 @@ type Snapshot struct {
 	Containers []Container
 	// Stats are the stats of the running containers, by container ID.
 	Stats map[string]ContainerStats
+	// Easypanel is the package.json of the running container of the Swarm service easypanel, nil without one.
+	Easypanel *EasypanelPackage
 }

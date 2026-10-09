@@ -8,15 +8,18 @@ import (
 	"github.com/heronlabs/talon/src/application"
 	"github.com/heronlabs/talon/src/core"
 	"github.com/heronlabs/talon/src/infrastructure/docker"
+	"github.com/heronlabs/talon/src/infrastructure/easypanel"
 	"github.com/heronlabs/talon/src/infrastructure/environment"
+	"github.com/heronlabs/talon/src/infrastructure/host"
 	"github.com/heronlabs/talon/src/infrastructure/terminal"
 	"github.com/heronlabs/talon/src/infrastructure/webhook"
 )
 
-// defaultDockerSocket and defaultConfigDir are the Docker socket and the configuration directory when DOCKER_SOCKET and TALON_CONFIG_DIR are empty.
+// defaultDockerSocket, defaultConfigDir and defaultHostRoot are the Docker socket, the configuration directory and the root of the host when DOCKER_SOCKET, TALON_CONFIG_DIR and TALON_HOST_ROOT are empty.
 const (
 	defaultDockerSocket = "/var/run/docker.sock"
 	defaultConfigDir    = "/etc/talon"
+	defaultHostRoot     = "/"
 )
 
 // version is the version of talon, set at build time by -ldflags "-X main.version=<version>".
@@ -33,15 +36,21 @@ func main() {
 
 	configDir := envOrDefault("TALON_CONFIG_DIR", defaultConfigDir)
 
+	hostRoot := envOrDefault("TALON_HOST_ROOT", defaultHostRoot)
+
 	logger := slog.Default()
 
 	osDirFs := os.DirFS(configDir)
+	hostRootFs := os.DirFS(hostRoot)
 
 	terminalPromptService := terminal.NewPromptService(os.Stdin, os.Stdout)
 
 	dockerClient := docker.NewSocketClient(dockerSocketPath, 5*time.Second)
 	dockerHealthCheckService := docker.NewHealthCheckService(dockerClient)
 	dockerReportCollectorService := docker.NewReportCollectorService(dockerClient)
+
+	hostReportCollectorService := host.NewReportCollectorService(hostRootFs, hostRoot)
+	easypanelReportCollectorService := easypanel.NewReportCollectorService(hostRootFs)
 
 	environmentKeys := environment.Keys()
 	environmentConfigReaderService := environment.NewConfigReaderService(osDirFs, environmentKeys, os.Getenv, terminalPromptService)
@@ -52,7 +61,7 @@ func main() {
 
 	coreDoctorService := core.NewDoctorService(osDirFs, dockerHealthCheckService)
 	coreSetupService := core.NewSetupService(environmentConfigReaderService, environmentConfigWriterService)
-	coreReportService := core.NewReportService(dockerReportCollectorService, webhookReportSenderService, environmentConfigReaderService, version, os.Hostname, time.Now)
+	coreReportService := core.NewReportService(dockerReportCollectorService, hostReportCollectorService, easypanelReportCollectorService, webhookReportSenderService, environmentConfigReaderService, version, os.Hostname, time.Now)
 
 	versionCommand := application.NewVersionCommand(version, logger)
 	doctorCommand := application.NewDoctorCommand(coreDoctorService, logger)

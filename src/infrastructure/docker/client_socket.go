@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"time"
@@ -40,19 +41,30 @@ func NewSocketClient(socketPath string, timeout time.Duration) *SocketClient {
 
 // Get requests path from the Engine API and decodes its JSON answer into target, unless target is nil; an answer other than 200 wraps ErrUnexpectedStatus.
 func (c *SocketClient) Get(path string, target any) error {
-	response, err := c.client.Get(engineURL + path)
+	body, err := c.Open(path)
 	if err != nil {
 		return err
 	}
-	defer response.Body.Close()
-
-	if response.StatusCode != http.StatusOK {
-		return fmt.Errorf("%w: %d", ErrUnexpectedStatus, response.StatusCode)
-	}
+	defer body.Close()
 
 	if target == nil {
 		return nil
 	}
 
-	return json.NewDecoder(response.Body).Decode(target)
+	return json.NewDecoder(body).Decode(target)
+}
+
+// Open requests path from the Engine API and returns the body of its answer, which the caller closes; an answer other than 200 wraps ErrUnexpectedStatus.
+func (c *SocketClient) Open(path string) (io.ReadCloser, error) {
+	response, err := c.client.Get(engineURL + path)
+	if err != nil {
+		return nil, err
+	}
+
+	if response.StatusCode != http.StatusOK {
+		_ = response.Body.Close()
+		return nil, fmt.Errorf("%w: %d", ErrUnexpectedStatus, response.StatusCode)
+	}
+
+	return response.Body, nil
 }
