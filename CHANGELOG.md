@@ -1,3 +1,9 @@
+## v0.8.0 (2026-10-09)
+
+### Features
+
+* feat: report host metrics, service directories and Easypanel version (#15) (8902ce18297b16de37d97496badef0f72ea512a8)
+
 ## v0.7.1 (2026-10-08)
 
 ### Miscellaneous Chores
