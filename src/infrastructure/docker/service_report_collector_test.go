@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -47,6 +48,43 @@ func replyQuery(query *url.Values, body string) http.HandlerFunc {
 func replyStats(stats map[string]string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, stats[r.PathValue("id")])
+	}
+}
+
+func replyStatsOr(status int, stats map[string]string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		body, found := stats[r.PathValue("id")]
+		if !found {
+			w.WriteHeader(status)
+		}
+		_, _ = io.WriteString(w, body)
+	}
+}
+
+func replyStatsAtOnce(inFlight int, peak *int) http.HandlerFunc {
+	var mutex sync.Mutex
+	var once sync.Once
+	current := 0
+	full := make(chan struct{})
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		mutex.Lock()
+		current++
+		*peak = max(*peak, current)
+		if current == inFlight {
+			once.Do(func() { close(full) })
+		}
+		mutex.Unlock()
+
+		select {
+		case <-full:
+		case <-r.Context().Done():
+		}
+
+		mutex.Lock()
+		current--
+		mutex.Unlock()
+		_, _ = io.WriteString(w, `{}`)
 	}
 }
 
@@ -115,7 +153,7 @@ func TestReportCollectorService(t *testing.T) {
 		service := NewReportCollectorService(NewSocketClient(socketPath, time.Second))
 		want := DiskUsage{LayersSize: 2500000000, BuildCache: []struct{ Size int64 }{{Size: 1000000000}, {Size: 500000000}}}
 
-		snapshot, err := service.Collect()
+		snapshot, err := service.Collect(t.Context())
 
 		if err != nil || !reflect.DeepEqual(snapshot.DiskUsage, want) {
 			t.Errorf("Collect() = %+v, %v; want disk usage %+v", snapshot, err, want)
@@ -138,7 +176,7 @@ func TestReportCollectorService(t *testing.T) {
 		api.ServiceStatus.DesiredTasks = 3
 		want := []SwarmService{api}
 
-		snapshot, err := service.Collect()
+		snapshot, err := service.Collect(t.Context())
 
 		if err != nil || !reflect.DeepEqual(snapshot.Services, want) {
 			t.Errorf("Collect() = %+v, %v; want services %+v", snapshot, err, want)
@@ -159,7 +197,7 @@ func TestReportCollectorService(t *testing.T) {
 		failed.Status.State = "failed"
 		want := []SwarmTask{failed}
 
-		snapshot, err := service.Collect()
+		snapshot, err := service.Collect(t.Context())
 
 		if err != nil || !reflect.DeepEqual(snapshot.Tasks, want) {
 			t.Errorf("Collect() = %+v, %v; want tasks %+v", snapshot, err, want)
@@ -183,7 +221,7 @@ func TestReportCollectorService(t *testing.T) {
 			Mounts: []struct{ Type, Name string }{{Type: "volume", Name: "shop_data"}},
 		}}
 
-		snapshot, err := service.Collect()
+		snapshot, err := service.Collect(t.Context())
 
 		if err != nil || !reflect.DeepEqual(snapshot.Containers, want) {
 			t.Errorf("Collect() = %+v, %v; want containers %+v", snapshot, err, want)
@@ -202,7 +240,7 @@ func TestReportCollectorService(t *testing.T) {
 		})
 		service := NewReportCollectorService(NewSocketClient(socketPath, time.Second))
 
-		_, _ = service.Collect()
+		_, _ = service.Collect(t.Context())
 
 		if query.Get("all") != "true" || query.Get("filters") != `{"label":["com.docker.swarm.service.name"]}` {
 			t.Errorf("Collect() sent query %v, want all=true and filters %s", query, `{"label":["com.docker.swarm.service.name"]}`)
@@ -232,7 +270,7 @@ func TestReportCollectorService(t *testing.T) {
 		b2.MemoryStats.Usage = 52428800
 		want := map[string]ContainerStats{"a1": a1, "b2": b2}
 
-		snapshot, err := service.Collect()
+		snapshot, err := service.Collect(t.Context())
 
 		if err != nil || !reflect.DeepEqual(snapshot.Stats, want) {
 			t.Errorf("Collect() = %+v, %v; want stats %+v", snapshot, err, want)
@@ -250,7 +288,7 @@ func TestReportCollectorService(t *testing.T) {
 		})
 		service := NewReportCollectorService(NewSocketClient(socketPath, time.Second))
 
-		_, err := service.Collect()
+		_, err := service.Collect(t.Context())
 
 		if !errors.Is(err, ErrUnexpectedStatus) {
 			t.Errorf("Collect() = %v, want %v", err, ErrUnexpectedStatus)
@@ -268,7 +306,7 @@ func TestReportCollectorService(t *testing.T) {
 		})
 		service := NewReportCollectorService(NewSocketClient(socketPath, time.Second))
 
-		_, err := service.Collect()
+		_, err := service.Collect(t.Context())
 
 		if !errors.Is(err, ErrUnexpectedStatus) {
 			t.Errorf("Collect() = %v, want %v", err, ErrUnexpectedStatus)
@@ -286,7 +324,7 @@ func TestReportCollectorService(t *testing.T) {
 		})
 		service := NewReportCollectorService(NewSocketClient(socketPath, time.Second))
 
-		_, err := service.Collect()
+		_, err := service.Collect(t.Context())
 
 		if !errors.Is(err, ErrUnexpectedStatus) {
 			t.Errorf("Collect() = %v, want %v", err, ErrUnexpectedStatus)
@@ -304,28 +342,111 @@ func TestReportCollectorService(t *testing.T) {
 		})
 		service := NewReportCollectorService(NewSocketClient(socketPath, time.Second))
 
-		_, err := service.Collect()
+		_, err := service.Collect(t.Context())
 
 		if !errors.Is(err, ErrUnexpectedStatus) {
 			t.Errorf("Collect() = %v, want %v", err, ErrUnexpectedStatus)
 		}
 	})
 
-	t.Run("Should fail when the stats of a running container answer other than 200", func(t *testing.T) {
+	t.Run("Should fail with ErrNotFound when the services answer 404", func(t *testing.T) {
 		socketPath := startReportEngine(t, reportEngine{
 			diskUsage:  reply(`{}`),
-			services:   reply(`[{"ID":"s1","Spec":{"Name":"shop_api"}}]`),
+			services:   replyStatus(http.StatusNotFound),
 			tasks:      reply(`[]`),
-			containers: reply(`[{"Id":"a1","State":"running","Labels":{"com.docker.swarm.service.name":"shop_api"}}]`),
-			stats:      replyStatus(http.StatusNotFound),
+			containers: reply(`[]`),
+			stats:      replyStats(nil),
 			archive:    replyStatus(http.StatusNotFound),
 		})
 		service := NewReportCollectorService(NewSocketClient(socketPath, time.Second))
 
-		_, err := service.Collect()
+		_, err := service.Collect(t.Context())
+
+		if !errors.Is(err, ErrNotFound) {
+			t.Errorf("Collect() = %v, want %v", err, ErrNotFound)
+		}
+	})
+
+	t.Run("Should fail when the stats of a running container answer other than 200 and 404", func(t *testing.T) {
+		socketPath := startReportEngine(t, reportEngine{
+			diskUsage: reply(`{}`),
+			services:  reply(`[{"ID":"s1","Spec":{"Name":"shop_api"}}]`),
+			tasks:     reply(`[]`),
+			containers: reply(`[
+				{"Id":"a1","State":"running","Labels":{"com.docker.swarm.service.name":"shop_api"}},
+				{"Id":"b2","State":"running","Labels":{"com.docker.swarm.service.name":"shop_web"}}
+			]`),
+			stats:   replyStatsOr(http.StatusInternalServerError, map[string]string{"b2": `{}`}),
+			archive: replyStatus(http.StatusNotFound),
+		})
+		service := NewReportCollectorService(NewSocketClient(socketPath, time.Second))
+
+		_, err := service.Collect(t.Context())
 
 		if !errors.Is(err, ErrUnexpectedStatus) {
 			t.Errorf("Collect() = %v, want %v", err, ErrUnexpectedStatus)
+		}
+	})
+
+	t.Run("Should leave out the stats of a running container that answer 404", func(t *testing.T) {
+		socketPath := startReportEngine(t, reportEngine{
+			diskUsage: reply(`{}`),
+			services:  reply(`[]`),
+			tasks:     reply(`[]`),
+			containers: reply(`[
+				{"Id":"a1","State":"running","Labels":{"com.docker.swarm.service.name":"shop_api"}},
+				{"Id":"b2","State":"running","Labels":{"com.docker.swarm.service.name":"shop_web"}}
+			]`),
+			stats:   replyStatsOr(http.StatusNotFound, map[string]string{"b2": `{"memory_stats":{"usage":52428800}}`}),
+			archive: replyStatus(http.StatusNotFound),
+		})
+		service := NewReportCollectorService(NewSocketClient(socketPath, time.Second))
+		b2 := ContainerStats{}
+		b2.MemoryStats.Usage = 52428800
+		want := map[string]ContainerStats{"b2": b2}
+
+		snapshot, err := service.Collect(t.Context())
+
+		if err != nil || !reflect.DeepEqual(snapshot.Stats, want) {
+			t.Errorf("Collect() = %+v, %v; want stats %+v", snapshot, err, want)
+		}
+	})
+
+	t.Run("Should request the stats of maxParallelStats running containers at once", func(t *testing.T) {
+		peak := 0
+		socketPath := startReportEngine(t, reportEngine{
+			diskUsage:  reply(`{}`),
+			services:   reply(`[]`),
+			tasks:      reply(`[]`),
+			containers: reply("[" + strings.TrimSuffix(strings.Repeat(`{"Id":"a1","State":"running"},`, 2*maxParallelStats), ",") + "]"),
+			stats:      replyStatsAtOnce(maxParallelStats, &peak),
+			archive:    replyStatus(http.StatusNotFound),
+		})
+		service := NewReportCollectorService(NewSocketClient(socketPath, time.Second))
+
+		_, err := service.Collect(t.Context())
+
+		if err != nil || peak != maxParallelStats {
+			t.Errorf("Collect() = %v with %d stats at once, want nil with %d", err, peak, maxParallelStats)
+		}
+	})
+
+	t.Run("Should fail when the ID of a running container is not a valid path", func(t *testing.T) {
+		socketPath := startReportEngine(t, reportEngine{
+			diskUsage:  reply(`{}`),
+			services:   reply(`[]`),
+			tasks:      reply(`[]`),
+			containers: reply(`[{"Id":"%zz","State":"running","Labels":{"com.docker.swarm.service.name":"shop_api"}}]`),
+			stats:      replyStats(nil),
+			archive:    replyStatus(http.StatusNotFound),
+		})
+		service := NewReportCollectorService(NewSocketClient(socketPath, time.Second))
+		var urlError *url.Error
+
+		_, err := service.Collect(t.Context())
+
+		if !errors.As(err, &urlError) || urlError.Op != "parse" {
+			t.Errorf("Collect() = %v, want a %T from parse", err, urlError)
 		}
 	})
 
@@ -341,7 +462,7 @@ func TestReportCollectorService(t *testing.T) {
 		service := NewReportCollectorService(NewSocketClient(socketPath, time.Second))
 		want := &EasypanelPackage{Version: "2.36.0"}
 
-		snapshot, err := service.Collect()
+		snapshot, err := service.Collect(t.Context())
 
 		if err != nil || !reflect.DeepEqual(snapshot.Easypanel, want) {
 			t.Errorf("Collect() = %+v, %v; want Easypanel %+v", snapshot, err, want)
@@ -360,7 +481,7 @@ func TestReportCollectorService(t *testing.T) {
 		})
 		service := NewReportCollectorService(NewSocketClient(socketPath, time.Second))
 
-		_, _ = service.Collect()
+		_, _ = service.Collect(t.Context())
 
 		if query.Get("path") != "/app/package.json" {
 			t.Errorf("Collect() sent query %v, want path %s", query, "/app/package.json")
@@ -383,7 +504,7 @@ func TestReportCollectorService(t *testing.T) {
 		service := NewReportCollectorService(NewSocketClient(socketPath, time.Second))
 		want := &EasypanelPackage{Version: "2.36.0"}
 
-		snapshot, err := service.Collect()
+		snapshot, err := service.Collect(t.Context())
 
 		if err != nil || !reflect.DeepEqual(snapshot.Easypanel, want) {
 			t.Errorf("Collect() = %+v, %v; want Easypanel %+v", snapshot, err, want)
@@ -404,14 +525,14 @@ func TestReportCollectorService(t *testing.T) {
 		})
 		service := NewReportCollectorService(NewSocketClient(socketPath, time.Second))
 
-		snapshot, err := service.Collect()
+		snapshot, err := service.Collect(t.Context())
 
 		if err != nil || snapshot.Easypanel != nil {
 			t.Errorf("Collect() = %+v, %v; want Easypanel nil", snapshot, err)
 		}
 	})
 
-	t.Run("Should fail when the archive of the easypanel container answers other than 200", func(t *testing.T) {
+	t.Run("Should leave the Easypanel package nil when the archive of the easypanel container answers 404", func(t *testing.T) {
 		socketPath := startReportEngine(t, reportEngine{
 			diskUsage:  reply(`{}`),
 			services:   reply(`[]`),
@@ -422,7 +543,25 @@ func TestReportCollectorService(t *testing.T) {
 		})
 		service := NewReportCollectorService(NewSocketClient(socketPath, time.Second))
 
-		_, err := service.Collect()
+		snapshot, err := service.Collect(t.Context())
+
+		if err != nil || snapshot.Easypanel != nil {
+			t.Errorf("Collect() = %+v, %v; want Easypanel nil", snapshot, err)
+		}
+	})
+
+	t.Run("Should fail when the archive of the easypanel container answers other than 200 and 404", func(t *testing.T) {
+		socketPath := startReportEngine(t, reportEngine{
+			diskUsage:  reply(`{}`),
+			services:   reply(`[]`),
+			tasks:      reply(`[]`),
+			containers: reply(`[{"Id":"e1","State":"running","Labels":{"com.docker.swarm.service.name":"easypanel"}}]`),
+			stats:      replyStats(map[string]string{"e1": `{}`}),
+			archive:    replyStatus(http.StatusInternalServerError),
+		})
+		service := NewReportCollectorService(NewSocketClient(socketPath, time.Second))
+
+		_, err := service.Collect(t.Context())
 
 		if !errors.Is(err, ErrUnexpectedStatus) {
 			t.Errorf("Collect() = %v, want %v", err, ErrUnexpectedStatus)
@@ -440,7 +579,7 @@ func TestReportCollectorService(t *testing.T) {
 		})
 		service := NewReportCollectorService(NewSocketClient(socketPath, time.Second))
 
-		_, err := service.Collect()
+		_, err := service.Collect(t.Context())
 
 		if !errors.Is(err, tar.ErrHeader) {
 			t.Errorf("Collect() = %v, want %v", err, tar.ErrHeader)
@@ -458,7 +597,7 @@ func TestReportCollectorService(t *testing.T) {
 		})
 		service := NewReportCollectorService(NewSocketClient(socketPath, time.Second))
 
-		_, err := service.Collect()
+		_, err := service.Collect(t.Context())
 
 		if !errors.Is(err, io.EOF) {
 			t.Errorf("Collect() = %v, want %v", err, io.EOF)
@@ -477,7 +616,7 @@ func TestReportCollectorService(t *testing.T) {
 		service := NewReportCollectorService(NewSocketClient(socketPath, time.Second))
 		var syntaxErr *json.SyntaxError
 
-		_, err := service.Collect()
+		_, err := service.Collect(t.Context())
 
 		if !errors.As(err, &syntaxErr) {
 			t.Errorf("Collect() = %v, want a JSON syntax error", err)

@@ -2,9 +2,12 @@ package docker
 
 import (
 	"archive/tar"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
+	"sync"
 )
 
 // ServiceNameLabel is the label with the name of the Swarm service of a container.
@@ -23,6 +26,9 @@ const (
 	easypanelService = "easypanel"
 )
 
+// maxParallelStats is the most requests for the stats of containers that run at once.
+const maxParallelStats = 8
+
 // ReportCollectorService collects the snapshot of the host from the Engine API.
 type ReportCollectorService struct {
 	client *SocketClient
@@ -33,32 +39,32 @@ func NewReportCollectorService(client *SocketClient) *ReportCollectorService {
 	return &ReportCollectorService{client: client}
 }
 
-// Collect returns the snapshot of the host: the disk usage, the Swarm services and tasks, the containers of the Swarm services, running or not, the stats of the running ones and the package.json of the running container of Easypanel.
-func (s *ReportCollectorService) Collect() (*Snapshot, error) {
+// Collect returns the snapshot of the host, requested with ctx: the disk usage, the Swarm services and tasks, the containers of the Swarm services, running or not, the stats of the running ones and the package.json of the running container of Easypanel.
+func (s *ReportCollectorService) Collect(ctx context.Context) (*Snapshot, error) {
 	var snapshot Snapshot
-	if err := s.client.Get(diskUsagePath, &snapshot.DiskUsage); err != nil {
+	if err := s.client.Get(ctx, diskUsagePath, &snapshot.DiskUsage); err != nil {
 		return nil, err
 	}
 
-	if err := s.client.Get(servicesPath, &snapshot.Services); err != nil {
+	if err := s.client.Get(ctx, servicesPath, &snapshot.Services); err != nil {
 		return nil, err
 	}
 
-	if err := s.client.Get(tasksPath, &snapshot.Tasks); err != nil {
+	if err := s.client.Get(ctx, tasksPath, &snapshot.Tasks); err != nil {
 		return nil, err
 	}
 
-	if err := s.client.Get(containersPath+url.QueryEscape(fmt.Sprintf(containersFilter, ServiceNameLabel)), &snapshot.Containers); err != nil {
+	if err := s.client.Get(ctx, containersPath+url.QueryEscape(fmt.Sprintf(containersFilter, ServiceNameLabel)), &snapshot.Containers); err != nil {
 		return nil, err
 	}
 
-	stats, err := s.stats(snapshot.Containers)
+	stats, err := s.stats(ctx, snapshot.Containers)
 	if err != nil {
 		return nil, err
 	}
 	snapshot.Stats = stats
 
-	easypanelPackage, err := s.easypanelPackage(snapshot.Containers)
+	easypanelPackage, err := s.easypanelPackage(ctx, snapshot.Containers)
 	if err != nil {
 		return nil, err
 	}
@@ -67,39 +73,79 @@ func (s *ReportCollectorService) Collect() (*Snapshot, error) {
 	return &snapshot, nil
 }
 
-// stats returns the stats of each running container of containers, by its ID.
-func (s *ReportCollectorService) stats(containers []Container) (map[string]ContainerStats, error) {
-	stats := map[string]ContainerStats{}
+// stats returns the stats of each running container of containers, by its ID, leaving out a container whose stats answer 404 and failing with the first other error.
+func (s *ReportCollectorService) stats(ctx context.Context, containers []Container) (map[string]ContainerStats, error) {
+	ids := runningIDs(containers)
+	entries := make([]ContainerStats, len(ids))
+	errs := make([]error, len(ids))
+
+	s.requestStats(ctx, ids, entries, errs)
+
+	return statsByID(ids, entries, errs)
+}
+
+// runningIDs returns the IDs of the running containers of containers.
+func runningIDs(containers []Container) []string {
+	ids := []string{}
 	for _, container := range containers {
-		if container.State != runningState {
+		if container.State == runningState {
+			ids = append(ids, container.ID)
+		}
+	}
+
+	return ids
+}
+
+// requestStats requests the stats of each container of ids with ctx, at most maxParallelStats at once, into the entry and the error at its index, and returns when every request is done.
+func (s *ReportCollectorService) requestStats(ctx context.Context, ids []string, entries []ContainerStats, errs []error) {
+	var group sync.WaitGroup
+	slots := make(chan struct{}, maxParallelStats)
+	for index, id := range ids {
+		slots <- struct{}{}
+		group.Go(func() {
+			defer func() { <-slots }()
+			errs[index] = s.client.Get(ctx, fmt.Sprintf(statsPath, id), &entries[index])
+		})
+	}
+
+	group.Wait()
+}
+
+// statsByID returns each entry by the ID at its index, leaving out those whose error is ErrNotFound, and fails with the first other error.
+func statsByID(ids []string, entries []ContainerStats, errs []error) (map[string]ContainerStats, error) {
+	stats := map[string]ContainerStats{}
+	for index, id := range ids {
+		if errors.Is(errs[index], ErrNotFound) {
 			continue
 		}
 
-		var entry ContainerStats
-		if err := s.client.Get(fmt.Sprintf(statsPath, container.ID), &entry); err != nil {
-			return nil, err
+		if errs[index] != nil {
+			return nil, errs[index]
 		}
 
-		stats[container.ID] = entry
+		stats[id] = entries[index]
 	}
 
 	return stats, nil
 }
 
-// easypanelPackage returns the package.json of the first running container of containers of the Swarm service easypanel, nil when there is none.
-func (s *ReportCollectorService) easypanelPackage(containers []Container) (*EasypanelPackage, error) {
+// easypanelPackage returns the package.json of the first running container of containers of the Swarm service easypanel, requested with ctx, nil when there is none.
+func (s *ReportCollectorService) easypanelPackage(ctx context.Context, containers []Container) (*EasypanelPackage, error) {
 	for _, container := range containers {
 		if container.State == runningState && container.Labels[ServiceNameLabel] == easypanelService {
-			return s.readPackage(container.ID)
+			return s.readPackage(ctx, container.ID)
 		}
 	}
 
 	return nil, nil
 }
 
-// readPackage returns the package.json of the container id, from the archive of /app/package.json.
-func (s *ReportCollectorService) readPackage(id string) (*EasypanelPackage, error) {
-	archive, err := s.client.Open(fmt.Sprintf(archivePath, id))
+// readPackage returns the package.json of the container id, from the archive of /app/package.json requested with ctx, nil when the archive answers 404.
+func (s *ReportCollectorService) readPackage(ctx context.Context, id string) (*EasypanelPackage, error) {
+	archive, err := s.client.Open(ctx, fmt.Sprintf(archivePath, id))
+	if errors.Is(err, ErrNotFound) {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}

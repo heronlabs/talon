@@ -2,6 +2,7 @@ package webhook
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -32,9 +33,9 @@ func NewReportSenderService(client *http.Client) *ReportSenderService {
 	return &ReportSenderService{client: client}
 }
 
-// Send posts the report as JSON to endpoint, with Authorization: Bearer <token> only when there is a token, and returns the reply of the webhook; an answer outside 2xx wraps ErrUnexpectedStatus.
-func (s *ReportSenderService) Send(endpoint, token string, report *entity.Report) (*ReportResponse, error) {
-	request, err := newRequest(endpoint, token, report)
+// Send posts the report as JSON to endpoint with ctx, with Authorization: Bearer <token> only when there is a token, and returns the reply of the webhook; an answer outside 2xx wraps ErrUnexpectedStatus.
+func (s *ReportSenderService) Send(ctx context.Context, endpoint, token string, report *entity.Report) (*ReportResponse, error) {
+	request, err := newRequest(ctx, endpoint, token, report)
 	if err != nil {
 		return nil, err
 	}
@@ -52,14 +53,14 @@ func (s *ReportSenderService) Send(endpoint, token string, report *entity.Report
 	return decodeResponse(response.Body)
 }
 
-// newRequest returns the POST of the report as JSON to endpoint, with Authorization: Bearer <token> only when there is a token.
-func newRequest(endpoint, token string, report *entity.Report) (*http.Request, error) {
+// newRequest returns the POST of the report as JSON to endpoint with ctx, with Authorization: Bearer <token> only when there is a token.
+func newRequest(ctx context.Context, endpoint, token string, report *entity.Report) (*http.Request, error) {
 	body, err := json.Marshal(report)
 	if err != nil {
 		return nil, err
 	}
 
-	request, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(body))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}

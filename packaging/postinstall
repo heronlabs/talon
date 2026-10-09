@@ -14,9 +14,20 @@ case "$1" in
     else
       deb-systemd-helper update-state talon-upgrade.timer >/dev/null || true
     fi
+    deb-systemd-helper unmask talon.service >/dev/null || true
+    if deb-systemd-helper --quiet was-enabled talon.service; then
+      deb-systemd-helper enable talon.service >/dev/null || true
+    else
+      deb-systemd-helper update-state talon.service >/dev/null || true
+    fi
     if [ -d /run/systemd/system ]; then
       systemctl --system daemon-reload >/dev/null || true
       deb-systemd-invoke "$action" talon-upgrade.timer >/dev/null || true
+      if [ -n "$2" ]; then
+        deb-systemd-invoke restart talon.service >/dev/null || true
+      else
+        deb-systemd-invoke start talon.service >/dev/null || true
+      fi
     fi
     ;;
 esac

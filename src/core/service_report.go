@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -17,14 +18,14 @@ const (
 	tokenKey    = "WEBHOOK_TOKEN" //nolint:gosec // G101: the name of the environment variable, not a credential
 )
 
-// ConfigGetter gets the value of one key of the configuration.
+// ConfigGetter gets the values of keys of the configuration, by their name, in one read.
 type ConfigGetter interface {
-	Get(name string) (string, error)
+	Get(names ...string) (map[string]string, error)
 }
 
 // DockerCollector collects the snapshot of the host from the Docker Engine.
 type DockerCollector interface {
-	Collect() (*docker.Snapshot, error)
+	Collect(ctx context.Context) (*docker.Snapshot, error)
 }
 
 // HostCollector collects the snapshot of the metrics of the host.
@@ -39,7 +40,7 @@ type EasypanelCollector interface {
 
 // ReportSender sends the report to the webhook at endpoint, with its token, and returns the reply.
 type ReportSender interface {
-	Send(endpoint, token string, report *entity.Report) (*webhook.ReportResponse, error)
+	Send(ctx context.Context, endpoint, token string, report *entity.Report) (*webhook.ReportResponse, error)
 }
 
 // ReportService builds the report of the host from its snapshots and sends it to the webhook.
@@ -59,14 +60,14 @@ func NewReportService(dockerCollector DockerCollector, hostCollector HostCollect
 	return &ReportService{dockerCollector: dockerCollector, hostCollector: hostCollector, easypanelCollector: easypanelCollector, sender: sender, config: config, version: version, hostname: hostname, now: now}
 }
 
-// Send builds the report, sends it to WEBHOOK_URL with WEBHOOK_TOKEN and returns it; without WEBHOOK_URL it builds it, sends nothing and returns it.
-func (s *ReportService) Send() (*entity.Report, error) {
+// Send builds the report, sends it to WEBHOOK_URL with WEBHOOK_TOKEN and returns it, talking to the Docker Engine and the webhook with ctx; without WEBHOOK_URL it builds it, sends nothing and returns it.
+func (s *ReportService) Send(ctx context.Context) (*entity.Report, error) {
 	endpoint, token, err := s.readConfig()
 	if err != nil {
 		return nil, err
 	}
 
-	report, err := s.collect()
+	report, err := s.collect(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -75,34 +76,31 @@ func (s *ReportService) Send() (*entity.Report, error) {
 		return report, nil
 	}
 
-	if _, err := s.sender.Send(endpoint, token, report); err != nil {
+	if _, err := s.sender.Send(ctx, endpoint, token, report); err != nil {
 		return nil, fmt.Errorf("webhook: %w", err)
 	}
 
 	return report, nil
 }
 
-// readConfig returns the URL of the webhook and its token, reading the token only when the URL is read.
+// readConfig returns the URL of the webhook and its token, read together.
 func (s *ReportService) readConfig() (endpoint, token string, err error) {
-	if endpoint, err = s.config.Get(endpointKey); err == nil {
-		token, err = s.config.Get(tokenKey)
-	}
-
+	values, err := s.config.Get(endpointKey, tokenKey)
 	if err != nil {
 		return "", "", fmt.Errorf("config: %w", err)
 	}
 
-	return endpoint, token, nil
+	return values[endpointKey], values[tokenKey], nil
 }
 
-// collect returns the report built, in order, from the hostname, the snapshot of the Docker Engine, the snapshot of the metrics of the host and the snapshot of the Easypanel directories, with the time from the clock and the version of talon.
-func (s *ReportService) collect() (*entity.Report, error) {
+// collect returns the report built, in order, from the hostname, the snapshot of the Docker Engine requested with ctx, the snapshot of the metrics of the host and the snapshot of the Easypanel directories, with the time from the clock and the version of talon.
+func (s *ReportService) collect(ctx context.Context) (*entity.Report, error) {
 	hostname, err := s.hostname()
 	if err != nil {
 		return nil, fmt.Errorf("host: %w", err)
 	}
 
-	snapshot, err := s.dockerCollector.Collect()
+	snapshot, err := s.dockerCollector.Collect(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("docker: %w", err)
 	}

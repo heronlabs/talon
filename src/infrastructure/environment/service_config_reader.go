@@ -62,18 +62,28 @@ func defaults(keys []Key) map[string]string {
 	return values
 }
 
-// Get returns the value of one key from the environment variable, then .env, then the default, without asking; it fails only when .env cannot be parsed.
-func (s *ConfigReaderService) Get(name string) (string, error) {
+// Get returns the value of each of names, by its name, from the environment variable, then .env, then the default, parsing .env once and without asking; it fails only when .env cannot be parsed.
+func (s *ConfigReaderService) Get(names ...string) (map[string]string, error) {
 	current, err := s.parse()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
+	values := map[string]string{}
+	for _, name := range names {
+		values[name] = s.get(name, current)
+	}
+
+	return values, nil
+}
+
+// get returns the environment variable name or, when that is empty, the value of the key in current or its default.
+func (s *ConfigReaderService) get(name string, current map[string]string) string {
 	if value := s.getenv(name); value != "" {
-		return value, nil
+		return value
 	}
 
-	return s.fallback(name, current), nil
+	return s.fallback(name, current)
 }
 
 // Read returns the value of every key, from the environment variable or, when that is empty, from the prompt, with the value in .env or the default as fallback, leaving empty without asking a key whose dependency is empty, and fails listing the required keys left empty.

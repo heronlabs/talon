@@ -17,8 +17,11 @@ const (
 	socketNetwork = "unix"
 )
 
-// ErrUnexpectedStatus is the error that an answer of the Engine API other than 200 wraps.
+// ErrUnexpectedStatus is the error that an answer of the Engine API other than 200 and 404 wraps.
 var ErrUnexpectedStatus = errors.New("unexpected status")
+
+// ErrNotFound is the error of an answer 404 of the Engine API.
+var ErrNotFound = errors.New("not found")
 
 // SocketClient requests the Engine API over the unix socket of the Docker Engine.
 type SocketClient struct {
@@ -39,9 +42,9 @@ func NewSocketClient(socketPath string, timeout time.Duration) *SocketClient {
 	}}
 }
 
-// Get requests path from the Engine API and decodes its JSON answer into target, unless target is nil; an answer other than 200 wraps ErrUnexpectedStatus.
-func (c *SocketClient) Get(path string, target any) error {
-	body, err := c.Open(path)
+// Get requests path from the Engine API with ctx and decodes its JSON answer into target, unless target is nil; an answer 404 is ErrNotFound and any other than 200 wraps ErrUnexpectedStatus.
+func (c *SocketClient) Get(ctx context.Context, path string, target any) error {
+	body, err := c.Open(ctx, path)
 	if err != nil {
 		return err
 	}
@@ -54,17 +57,34 @@ func (c *SocketClient) Get(path string, target any) error {
 	return json.NewDecoder(body).Decode(target)
 }
 
-// Open requests path from the Engine API and returns the body of its answer, which the caller closes; an answer other than 200 wraps ErrUnexpectedStatus.
-func (c *SocketClient) Open(path string) (io.ReadCloser, error) {
-	response, err := c.client.Get(engineURL + path)
+// Open requests path from the Engine API with ctx and returns the body of its answer, which the caller closes; an answer 404 is ErrNotFound and any other than 200 wraps ErrUnexpectedStatus.
+func (c *SocketClient) Open(ctx context.Context, path string) (io.ReadCloser, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, engineURL+path, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	if response.StatusCode != http.StatusOK {
+	response, err := c.client.Do(request)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := checkStatus(response.StatusCode); err != nil {
 		_ = response.Body.Close()
-		return nil, fmt.Errorf("%w: %d", ErrUnexpectedStatus, response.StatusCode)
+		return nil, err
 	}
 
 	return response.Body, nil
+}
+
+// checkStatus returns nil on 200, ErrNotFound on 404 and an error wrapping ErrUnexpectedStatus on any other status.
+func checkStatus(status int) error {
+	switch status {
+	case http.StatusOK:
+		return nil
+	case http.StatusNotFound:
+		return ErrNotFound
+	default:
+		return fmt.Errorf("%w: %d", ErrUnexpectedStatus, status)
+	}
 }

@@ -1,6 +1,7 @@
 package application
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 
@@ -9,7 +10,7 @@ import (
 
 // Report sends the report of the host and returns it.
 type Report interface {
-	Send() (*entity.Report, error)
+	Send(ctx context.Context) (*entity.Report, error)
 }
 
 // ReportCommand runs talon report.
@@ -23,9 +24,9 @@ func NewReportCommand(report Report, logger *slog.Logger) *ReportCommand {
 	return &ReportCommand{report: report, logger: logger}
 }
 
-// Run sends the report, logs the result with the report as JSON in payload and returns 0 when it is sent or 1 when it is not.
-func (c *ReportCommand) Run() int {
-	report, err := c.report.Send()
+// Run sends the report with ctx, logs the result with the report as JSON in payload and returns 0 when it is sent or 1 when it is not.
+func (c *ReportCommand) Run(ctx context.Context) int {
+	report, err := c.report.Send(ctx)
 	if err != nil {
 		c.logger.Error("report", "error", err)
 		return 1

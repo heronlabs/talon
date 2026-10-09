@@ -1,13 +1,14 @@
 package core
 
 import (
+	"context"
 	"fmt"
 	"io/fs"
 )
 
 // HealthCheck pings the Docker Engine.
 type HealthCheck interface {
-	Ping() error
+	Ping(ctx context.Context) error
 }
 
 // DoctorService checks the configuration and the Docker Engine of the host.
@@ -21,13 +22,13 @@ func NewDoctorService(fsys fs.FS, healthCheck HealthCheck) *DoctorService {
 	return &DoctorService{fsys: fsys, healthCheck: healthCheck}
 }
 
-// Check fails when .env does not exist or its mode is not 600, or when the Docker Engine does not answer the ping.
-func (s *DoctorService) Check() error {
+// Check fails when .env does not exist or its mode is not 600, or when the Docker Engine does not answer the ping before ctx is done.
+func (s *DoctorService) Check(ctx context.Context) error {
 	if err := s.checkEnv(); err != nil {
 		return fmt.Errorf("config: %w", err)
 	}
 
-	if err := s.healthCheck.Ping(); err != nil {
+	if err := s.healthCheck.Ping(ctx); err != nil {
 		return fmt.Errorf("docker: %w", err)
 	}
 
