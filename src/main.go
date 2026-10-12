@@ -46,7 +46,8 @@ func main() {
 	osDirFs := os.DirFS(configDir)
 	hostRootFs := os.DirFS(hostRoot)
 
-	terminalPromptService := terminal.NewPromptService(os.Stdin, os.Stdout)
+	terminalEchoClient := terminal.NewEchoClient(os.Stdin.Fd())
+	terminalPromptService := terminal.NewPromptService(os.Stdin, os.Stdout, terminalEchoClient)
 
 	dockerClient := docker.NewSocketClient(dockerSocketPath, 5*time.Second)
 	dockerHealthCheckService := docker.NewHealthCheckService(dockerClient)

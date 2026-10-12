@@ -73,7 +73,7 @@ WEBHOOK_URL: https://webhook.example.com
 AWS_REGION [us-east-1]:
 ```
 
-The fallback is the value already in `.env` or, without one, the default of the key. The fallback of a token or secret key is shown as `[****]`; what you type is echoed. An empty answer keeps the fallback. When `WEBHOOK_URL` ends up empty, `setup` does not ask for `WEBHOOK_TOKEN` and leaves it empty. A key with no default is required, except `WEBHOOK_URL` and `WEBHOOK_TOKEN`: when any required key ends up empty, `setup` lists them and writes nothing. Otherwise it replaces `.env` with the six keys, mode `600`. Lines of the old `.env` that are not one of the keys are dropped.
+The fallback is the value already in `.env` or, without one, the default of the key. The fallback of a token or secret key is shown as `[****]`, and when the input is a terminal what you type for it is not echoed; Ctrl+C turns the echo back on and still ends `setup`. An empty answer keeps the fallback. When `WEBHOOK_URL` ends up empty, `setup` does not ask for `WEBHOOK_TOKEN` and leaves it empty. A key with no default is required, except `WEBHOOK_URL` and `WEBHOOK_TOKEN`: when any required key ends up empty, `setup` lists them and writes nothing. Otherwise it replaces `.env` with the six keys, mode `600`. Lines of the old `.env` that are not one of the keys are dropped.
 
 Each command logs one line with its result and exits `0` on success or `1` on failure; `daemon` logs the line of `report` on every cycle and one line when it stops:
 
