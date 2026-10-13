@@ -1,0 +1,53 @@
+{
+  "projects": [
+    {
+      "createdAt": "2026-10-12T21:07:42.856Z",
+      "name": "cms-heronlabs"
+    }
+  ],
+  "services": [
+    {
+      "enabled": true,
+      "name": "cms-api",
+      "primaryDomainId": "cmv5quaho000507p5ghc030nh",
+      "projectName": "cms-heronlabs",
+      "token": "scrubbed-token",
+      "type": "app",
+      "deploy": {
+        "command": null,
+        "replicas": 1,
+        "zeroDowntime": true
+      },
+      "env": "",
+      "mounts": [],
+      "ports": [],
+      "source": {
+        "image": "nginx:latest",
+        "type": "image"
+      },
+      "resources": {
+        "cpuLimit": 1,
+        "cpuReservation": 0.1,
+        "memoryLimit": 1024,
+        "memoryReservation": 256
+      }
+    },
+    {
+      "databaseName": "cms-heronlabs",
+      "enabled": true,
+      "exposedPort": 0,
+      "image": "postgres:18",
+      "name": "cms-database",
+      "password": "scrubbed-password",
+      "projectName": "cms-heronlabs",
+      "type": "postgres",
+      "user": "postgres",
+      "resources": {
+        "cpuLimit": 0.5,
+        "cpuReservation": 0.1,
+        "memoryLimit": 512,
+        "memoryReservation": 128
+      }
+    }
+  ]
+}

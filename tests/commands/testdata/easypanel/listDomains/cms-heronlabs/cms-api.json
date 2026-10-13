@@ -1,0 +1,19 @@
+[
+  {
+    "certificateResolver": "",
+    "destinationType": "service",
+    "host": "cms-heronlabs-cms-api.example.easypanel.host",
+    "https": true,
+    "id": "cmv5quaho000507p5ghc030nh",
+    "middlewares": [],
+    "path": "/",
+    "serviceDestination": {
+      "path": "/",
+      "port": 80,
+      "projectName": "cms-heronlabs",
+      "protocol": "http",
+      "serviceName": "cms-api"
+    },
+    "wildcard": false
+  }
+]

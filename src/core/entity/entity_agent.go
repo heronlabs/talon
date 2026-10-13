@@ -17,13 +17,13 @@ type Agent struct {
 	LastReconcile      *LastReconcile `json:"lastReconcile"`
 }
 
-// NewAgent returns the agent with version of talon and, when easypanelPackage is not nil, its Easypanel version and whether that version is in supportedEasypanelVersions.
-func NewAgent(version string, easypanelPackage *docker.EasypanelPackage) Agent {
+// NewAgent returns the agent with version of talon, lastReconcile and, when easypanelPackage is not nil, its Easypanel version and whether that version is in supportedEasypanelVersions.
+func NewAgent(version string, easypanelPackage *docker.EasypanelPackage, lastReconcile *LastReconcile) Agent {
 	if easypanelPackage == nil {
-		return Agent{Version: version}
+		return Agent{Version: version, LastReconcile: lastReconcile}
 	}
 
 	supported := slices.Contains(supportedEasypanelVersions, easypanelPackage.Version)
 
-	return Agent{Version: version, EasypanelVersion: &easypanelPackage.Version, EasypanelSupported: &supported}
+	return Agent{Version: version, EasypanelVersion: &easypanelPackage.Version, EasypanelSupported: &supported, LastReconcile: lastReconcile}
 }

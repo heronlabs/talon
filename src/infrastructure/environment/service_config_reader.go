@@ -16,9 +16,14 @@ type Key struct {
 	DependsOn string
 }
 
-// Required reports whether the key needs a value: it has no default and is not optional.
-func (k Key) Required() bool {
-	return !k.Optional && k.Default == ""
+// Required reports whether the key needs a value among values: it has no default, is not optional and does not depend on a key that is empty in values.
+func (k Key) Required(values map[string]string) bool {
+	return !k.Optional && k.Default == "" && !k.skipped(values)
+}
+
+// skipped reports whether the key depends on a key that is empty in values, so it is left empty without asking.
+func (k Key) skipped(values map[string]string) bool {
+	return k.DependsOn != "" && values[k.DependsOn] == ""
 }
 
 // Keys returns every variable of the .env, in the order setup asks for them.
@@ -26,6 +31,10 @@ func Keys() []Key {
 	return []Key{
 		{Name: "WEBHOOK_URL", Optional: true},
 		{Name: "WEBHOOK_TOKEN", Secret: true, Optional: true, DependsOn: "WEBHOOK_URL"},
+		{Name: "MANIFEST_URL", Optional: true},
+		{Name: "MANIFEST_TOKEN", Secret: true, Optional: true, DependsOn: "MANIFEST_URL"},
+		{Name: "EASYPANEL_URL", Default: "http://localhost:3000", DependsOn: "MANIFEST_URL"},
+		{Name: "EASYPANEL_TOKEN", Secret: true, DependsOn: "MANIFEST_URL"},
 		{Name: "AWS_ACCESS_KEY_ID"},
 		{Name: "AWS_SECRET_ACCESS_KEY", Secret: true},
 		{Name: "AWS_REGION", Default: "us-east-1"},
@@ -112,7 +121,7 @@ func (s *ConfigReaderService) Read() (map[string]string, error) {
 
 // value returns empty when the dependency of the key is empty in values; otherwise the environment variable of the key or, when that is empty, the answer of the prompt, with the value in current or the default as fallback.
 func (s *ConfigReaderService) value(key Key, current, values map[string]string) (string, error) {
-	if key.DependsOn != "" && values[key.DependsOn] == "" {
+	if key.skipped(values) {
 		return "", nil
 	}
 
@@ -128,11 +137,11 @@ func (s *ConfigReaderService) value(key Key, current, values map[string]string) 
 	return value, nil
 }
 
-// checkRequired fails listing the required keys whose value is empty.
+// checkRequired fails listing the keys required among values whose value is empty.
 func (s *ConfigReaderService) checkRequired(values map[string]string) error {
 	missing := []string{}
 	for _, key := range s.keys {
-		if key.Required() && values[key.Name] == "" {
+		if key.Required(values) && values[key.Name] == "" {
 			missing = append(missing, key.Name)
 		}
 	}

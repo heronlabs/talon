@@ -14,6 +14,7 @@ import (
 	"github.com/heronlabs/talon/src/infrastructure/easypanel"
 	"github.com/heronlabs/talon/src/infrastructure/environment"
 	"github.com/heronlabs/talon/src/infrastructure/host"
+	"github.com/heronlabs/talon/src/infrastructure/manifest"
 	"github.com/heronlabs/talon/src/infrastructure/terminal"
 	"github.com/heronlabs/talon/src/infrastructure/webhook"
 )
@@ -60,12 +61,17 @@ func main() {
 	environmentConfigReaderService := environment.NewConfigReaderService(osDirFs, environmentKeys, os.Getenv, terminalPromptService)
 	environmentConfigWriterService := environment.NewConfigWriterService(configDir, environmentKeys)
 
-	webhookHTTPClient := webhook.NewHTTPClient(15 * time.Second)
-	webhookReportSenderService := webhook.NewReportSenderService(webhookHTTPClient)
+	httpClient := webhook.NewHTTPClient(15 * time.Second)
+	webhookReportSenderService := webhook.NewReportSenderService(httpClient)
+	manifestReaderService := manifest.NewReaderService(httpClient)
 
-	coreDoctorService := core.NewDoctorService(osDirFs, dockerHealthCheckService)
+	easypanelAPIClient := easypanel.NewAPIClient(httpClient)
+	easypanelConfigCollectorService := easypanel.NewConfigCollectorService(easypanelAPIClient)
+	easypanelHealthCheckService := easypanel.NewHealthCheckService(easypanelAPIClient)
+
+	coreDoctorService := core.NewDoctorService(osDirFs, dockerHealthCheckService, environmentConfigReaderService, easypanelHealthCheckService)
 	coreSetupService := core.NewSetupService(environmentConfigReaderService, environmentConfigWriterService)
-	coreReportService := core.NewReportService(dockerReportCollectorService, hostReportCollectorService, easypanelReportCollectorService, webhookReportSenderService, environmentConfigReaderService, version, os.Hostname, time.Now)
+	coreReportService := core.NewReportService(dockerReportCollectorService, hostReportCollectorService, easypanelReportCollectorService, manifestReaderService, easypanelConfigCollectorService, webhookReportSenderService, environmentConfigReaderService, version, os.Hostname, time.Now)
 	coreScheduleService := core.NewScheduleService(environmentConfigReaderService)
 
 	versionCommand := application.NewVersionCommand(version, logger)

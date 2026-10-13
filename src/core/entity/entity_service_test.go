@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/heronlabs/talon/src/infrastructure/docker"
+	"github.com/heronlabs/talon/src/infrastructure/manifest"
 )
 
 func TestService(t *testing.T) {
@@ -11,7 +12,7 @@ func TestService(t *testing.T) {
 		swarmService := decode[docker.SwarmService](t, `{"ID":"s1","Spec":{"Name":"shop_api"}}`)
 		want := Service{Name: "api", State: "missing"}
 
-		service := NewService("api", swarmService, docker.Snapshot{}, 0)
+		service := NewService("api", swarmService, docker.Snapshot{}, 0, nil)
 
 		if service != want {
 			t.Errorf("NewService() = %+v, want %+v", service, want)
@@ -26,7 +27,7 @@ func TestService(t *testing.T) {
 		]`)}
 		want := Service{Name: "api", State: "running"}
 
-		service := NewService("api", swarmService, snapshot, 0)
+		service := NewService("api", swarmService, snapshot, 0, nil)
 
 		if service != want {
 			t.Errorf("NewService() = %+v, want %+v", service, want)
@@ -41,7 +42,7 @@ func TestService(t *testing.T) {
 		]`)}
 		want := Service{Name: "api", State: "restarting"}
 
-		service := NewService("api", swarmService, snapshot, 0)
+		service := NewService("api", swarmService, snapshot, 0, nil)
 
 		if service != want {
 			t.Errorf("NewService() = %+v, want %+v", service, want)
@@ -56,7 +57,7 @@ func TestService(t *testing.T) {
 		]`)}
 		want := Service{Name: "api", State: "paused"}
 
-		service := NewService("api", swarmService, snapshot, 0)
+		service := NewService("api", swarmService, snapshot, 0, nil)
 
 		if service != want {
 			t.Errorf("NewService() = %+v, want %+v", service, want)
@@ -71,7 +72,7 @@ func TestService(t *testing.T) {
 		]`)}
 		want := Service{Name: "api", State: "created"}
 
-		service := NewService("api", swarmService, snapshot, 0)
+		service := NewService("api", swarmService, snapshot, 0, nil)
 
 		if service != want {
 			t.Errorf("NewService() = %+v, want %+v", service, want)
@@ -86,7 +87,7 @@ func TestService(t *testing.T) {
 		]`)}
 		want := Service{Name: "api", State: "exited"}
 
-		service := NewService("api", swarmService, snapshot, 0)
+		service := NewService("api", swarmService, snapshot, 0, nil)
 
 		if service != want {
 			t.Errorf("NewService() = %+v, want %+v", service, want)
@@ -98,7 +99,7 @@ func TestService(t *testing.T) {
 		snapshot := docker.Snapshot{Containers: decode[[]docker.Container](t, `[{"Id":"a1","State":"removing","Labels":{"com.docker.swarm.service.name":"shop_api"}}]`)}
 		want := Service{Name: "api", State: "exited"}
 
-		service := NewService("api", swarmService, snapshot, 0)
+		service := NewService("api", swarmService, snapshot, 0, nil)
 
 		if service != want {
 			t.Errorf("NewService() = %+v, want %+v", service, want)
@@ -110,7 +111,7 @@ func TestService(t *testing.T) {
 		snapshot := docker.Snapshot{Containers: decode[[]docker.Container](t, `[{"Id":"a1","State":"unknown","Labels":{"com.docker.swarm.service.name":"shop_api"}}]`)}
 		want := Service{Name: "api", State: "dead"}
 
-		service := NewService("api", swarmService, snapshot, 0)
+		service := NewService("api", swarmService, snapshot, 0, nil)
 
 		if service != want {
 			t.Errorf("NewService() = %+v, want %+v", service, want)
@@ -125,7 +126,7 @@ func TestService(t *testing.T) {
 		]`)}
 		want := Service{Name: "api", State: "paused"}
 
-		service := NewService("api", swarmService, snapshot, 0)
+		service := NewService("api", swarmService, snapshot, 0, nil)
 
 		if service != want {
 			t.Errorf("NewService() = %+v, want %+v", service, want)
@@ -136,7 +137,7 @@ func TestService(t *testing.T) {
 		swarmService := decode[docker.SwarmService](t, `{"ID":"s1","Spec":{"Name":"shop_api"},"ServiceStatus":{"RunningTasks":2,"DesiredTasks":3}}`)
 		want := Service{Name: "api", State: "missing", ReplicasRunning: 2, ReplicasDesired: 3}
 
-		service := NewService("api", swarmService, docker.Snapshot{}, 0)
+		service := NewService("api", swarmService, docker.Snapshot{}, 0, nil)
 
 		if service != want {
 			t.Errorf("NewService() = %+v, want %+v", service, want)
@@ -154,7 +155,7 @@ func TestService(t *testing.T) {
 		]`)}
 		want := Service{Name: "api", State: "missing", RecentTaskFailures: 2}
 
-		service := NewService("api", swarmService, snapshot, 0)
+		service := NewService("api", swarmService, snapshot, 0, nil)
 
 		if service != want {
 			t.Errorf("NewService() = %+v, want %+v", service, want)
@@ -165,7 +166,7 @@ func TestService(t *testing.T) {
 		swarmService := decode[docker.SwarmService](t, `{"ID":"s1","Spec":{"Name":"shop_api","TaskTemplate":{"Resources":{"Limits":{"NanoCPUs":1500000000,"MemoryBytes":536870912}}}}}`)
 		want := Service{Name: "api", State: "missing", MemoryLimitMiB: 512, CPULimit: 1.5}
 
-		service := NewService("api", swarmService, docker.Snapshot{}, 0)
+		service := NewService("api", swarmService, docker.Snapshot{}, 0, nil)
 
 		if service != want {
 			t.Errorf("NewService() = %+v, want %+v", service, want)
@@ -187,7 +188,7 @@ func TestService(t *testing.T) {
 		}
 		want := Service{Name: "api", State: "exited", DiskGB: 2}
 
-		service := NewService("api", swarmService, snapshot, 0)
+		service := NewService("api", swarmService, snapshot, 0, nil)
 
 		if service != want {
 			t.Errorf("NewService() = %+v, want %+v", service, want)
@@ -204,7 +205,7 @@ func TestService(t *testing.T) {
 		}
 		want := Service{Name: "api", State: "exited", DiskGB: 2.25}
 
-		service := NewService("api", swarmService, snapshot, 750000000)
+		service := NewService("api", swarmService, snapshot, 750000000, nil)
 
 		if service != want {
 			t.Errorf("NewService() = %+v, want %+v", service, want)
@@ -224,7 +225,7 @@ func TestService(t *testing.T) {
 		}
 		want := Service{Name: "api", State: "exited", DiskGB: 0.5}
 
-		service := NewService("api", swarmService, snapshot, 0)
+		service := NewService("api", swarmService, snapshot, 0, nil)
 
 		if service != want {
 			t.Errorf("NewService() = %+v, want %+v", service, want)
@@ -246,7 +247,7 @@ func TestService(t *testing.T) {
 		}
 		want := Service{Name: "api", State: "running", MemoryUsedMiB: 150}
 
-		service := NewService("api", swarmService, snapshot, 0)
+		service := NewService("api", swarmService, snapshot, 0, nil)
 
 		if service != want {
 			t.Errorf("NewService() = %+v, want %+v", service, want)
@@ -267,7 +268,7 @@ func TestService(t *testing.T) {
 		}
 		want := Service{Name: "api", State: "running", MemoryUsedMiB: 100}
 
-		service := NewService("api", swarmService, snapshot, 0)
+		service := NewService("api", swarmService, snapshot, 0, nil)
 
 		if service != want {
 			t.Errorf("NewService() = %+v, want %+v", service, want)
@@ -412,6 +413,40 @@ func TestService(t *testing.T) {
 
 		if service != want {
 			t.Errorf("addStats() = %+v, want %+v", service, want)
+		}
+	})
+
+	t.Run("Should be managed when its client declares it", func(t *testing.T) {
+		swarmService := decode[docker.SwarmService](t, `{"ID":"s1","Spec":{"Name":"shop_api"}}`)
+		client := decode[manifest.Client](t, `{"slug":"shop","schema":{"services":[{"type":"postgres","data":{"serviceName":"db"}},{"type":"app","data":{"serviceName":"api"}}]}}`)
+		want := Service{Name: "api", Managed: true, State: "missing"}
+
+		service := NewService("api", swarmService, docker.Snapshot{}, 0, &client)
+
+		if service != want {
+			t.Errorf("NewService() = %+v, want %+v", service, want)
+		}
+	})
+
+	t.Run("Should not be managed when its client does not declare it", func(t *testing.T) {
+		swarmService := decode[docker.SwarmService](t, `{"ID":"s1","Spec":{"Name":"shop_api"}}`)
+		client := decode[manifest.Client](t, `{"slug":"shop","schema":{"services":[{"type":"postgres","data":{"serviceName":"db"}}]}}`)
+		want := Service{Name: "api", State: "missing"}
+
+		service := NewService("api", swarmService, docker.Snapshot{}, 0, &client)
+
+		if service != want {
+			t.Errorf("NewService() = %+v, want %+v", service, want)
+		}
+	})
+
+	t.Run("Should be managed, missing and with every number 0 when the manifest declares it without a Swarm service", func(t *testing.T) {
+		want := Service{Name: "db", Managed: true, State: "missing"}
+
+		service := NewMissingService("db")
+
+		if service != want {
+			t.Errorf("NewMissingService() = %+v, want %+v", service, want)
 		}
 	})
 }

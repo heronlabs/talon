@@ -168,4 +168,122 @@ func TestDaemonCommand(t *testing.T) {
 			t.Errorf("exit %d, output %q; want exit 1 with the parse error of line 1", code, out)
 		}
 	})
+
+	t.Run("Should post the reconcile of a project as converged on each cycle when Easypanel holds the schema of its client", func(t *testing.T) {
+		dir := t.TempDir()
+		webhookURL, requests := startHoldingWebhook(t, released())
+		manifestURL, _ := startManifest(t, http.StatusOK, readTestdata(t, "manifest/converged.json"))
+		writeEnvContent(t, dir, "WEBHOOK_URL="+webhookURL+"\nMANIFEST_URL="+manifestURL+"\nEASYPANEL_URL="+startEasypanel(t)+"\nEASYPANEL_TOKEN=easypanel-token\n")
+		unsetKeys(t)
+		t.Setenv("DOCKER_SOCKET", startReportEngine(t))
+		t.Setenv("TALON_HOST_ROOT", newHostRoot(t))
+		process := cli.Start(t, dir, "daemon")
+		wantProject := `{"name":"cms-heronlabs","reconcile":{"state":"converged","missingSecrets":[],"error":null},`
+
+		body := receiveRequest(t, requests)
+		process.Signal(t, syscall.SIGTERM)
+		out, code := process.Wait(t)
+
+		if code != 0 || !strings.Contains(string(body), wantProject) || !strings.Contains(string(body), `"outcome":"ok","error":null}`) || !strings.Contains(out, "INFO daemon status=stopped") {
+			t.Errorf("exit %d, output %q, body %s; want exit 0 with %s, lastReconcile ok and status=stopped", code, out, body, wantProject)
+		}
+	})
+
+	t.Run("Should post the reconcile of a project as pending when Easypanel differs from the schema of its client", func(t *testing.T) {
+		dir := t.TempDir()
+		webhookURL, requests := startHoldingWebhook(t, released())
+		manifestURL, _ := startManifest(t, http.StatusOK, readTestdata(t, "manifest/pending.json"))
+		writeEnvContent(t, dir, "WEBHOOK_URL="+webhookURL+"\nMANIFEST_URL="+manifestURL+"\nEASYPANEL_URL="+startEasypanel(t)+"\nEASYPANEL_TOKEN=easypanel-token\n")
+		unsetKeys(t)
+		t.Setenv("DOCKER_SOCKET", startReportEngine(t))
+		t.Setenv("TALON_HOST_ROOT", newHostRoot(t))
+		process := cli.Start(t, dir, "daemon")
+		wantProject := `{"name":"cms-heronlabs","reconcile":{"state":"pending","missingSecrets":[],"error":null},`
+
+		body := receiveRequest(t, requests)
+		process.Signal(t, syscall.SIGTERM)
+		out, code := process.Wait(t)
+
+		if code != 0 || !strings.Contains(string(body), wantProject) || !strings.Contains(out, "INFO daemon status=stopped") {
+			t.Errorf("exit %d, output %q, body %s; want exit 0 with %s and status=stopped", code, out, body, wantProject)
+		}
+	})
+
+	t.Run("Should post a project that is not in the manifest as unmanaged", func(t *testing.T) {
+		dir := t.TempDir()
+		webhookURL, requests := startHoldingWebhook(t, released())
+		manifestURL, _ := startManifest(t, http.StatusOK, readTestdata(t, "manifest/converged.json"))
+		writeEnvContent(t, dir, "WEBHOOK_URL="+webhookURL+"\nMANIFEST_URL="+manifestURL+"\nEASYPANEL_URL="+startEasypanel(t)+"\nEASYPANEL_TOKEN=easypanel-token\n")
+		unsetKeys(t)
+		t.Setenv("DOCKER_SOCKET", startReportEngine(t))
+		t.Setenv("TALON_HOST_ROOT", newHostRoot(t))
+		process := cli.Start(t, dir, "daemon")
+		wantProject := `{"name":"shop","reconcile":{"state":"unmanaged","missingSecrets":[],"error":null},`
+
+		body := receiveRequest(t, requests)
+		process.Signal(t, syscall.SIGTERM)
+		out, code := process.Wait(t)
+
+		if code != 0 || !strings.Contains(string(body), wantProject) || !strings.Contains(out, "INFO daemon status=stopped") {
+			t.Errorf("exit %d, output %q, body %s; want exit 0 with %s and status=stopped", code, out, body, wantProject)
+		}
+	})
+
+	t.Run("Should post the report with lastReconcile failed and keep running when the manifest fails", func(t *testing.T) {
+		dir := t.TempDir()
+		webhookURL, requests := startHoldingWebhook(t, released())
+		manifestURL, _ := startManifest(t, http.StatusInternalServerError, `{"data":null}`)
+		writeEnvContent(t, dir, "WEBHOOK_URL="+webhookURL+"\nMANIFEST_URL="+manifestURL+"\nEASYPANEL_URL="+startEasypanel(t)+"\nEASYPANEL_TOKEN=easypanel-token\n")
+		unsetKeys(t)
+		t.Setenv("DOCKER_SOCKET", startReportEngine(t))
+		t.Setenv("TALON_HOST_ROOT", newHostRoot(t))
+		process := cli.Start(t, dir, "daemon")
+		wantLastReconcile := `"outcome":"failed","error":"manifest: unexpected status: 500"}`
+
+		body := receiveRequest(t, requests)
+		process.Signal(t, syscall.SIGTERM)
+		out, code := process.Wait(t)
+
+		if code != 0 || !strings.Contains(string(body), wantLastReconcile) || !strings.Contains(out, "INFO report status=ok") || !strings.Contains(out, "INFO daemon status=stopped") {
+			t.Errorf("exit %d, output %q, body %s; want exit 0 with %s, status=ok and status=stopped", code, out, body, wantLastReconcile)
+		}
+	})
+
+	t.Run("Should post the report with lastReconcile failed and keep running when Easypanel fails", func(t *testing.T) {
+		dir := t.TempDir()
+		webhookURL, requests := startHoldingWebhook(t, released())
+		manifestURL, _ := startManifest(t, http.StatusOK, readTestdata(t, "manifest/converged.json"))
+		writeEnvContent(t, dir, "WEBHOOK_URL="+webhookURL+"\nMANIFEST_URL="+manifestURL+"\nEASYPANEL_URL="+startEasypanel(t)+"\nEASYPANEL_TOKEN=wrong\n")
+		unsetKeys(t)
+		t.Setenv("DOCKER_SOCKET", startReportEngine(t))
+		t.Setenv("TALON_HOST_ROOT", newHostRoot(t))
+		process := cli.Start(t, dir, "daemon")
+		wantLastReconcile := `"outcome":"failed","error":"easypanel: listProjectsAndServices: unexpected status: 401"}`
+
+		body := receiveRequest(t, requests)
+		process.Signal(t, syscall.SIGTERM)
+		out, code := process.Wait(t)
+
+		if code != 0 || !strings.Contains(string(body), wantLastReconcile) || !strings.Contains(out, "INFO report status=ok") || !strings.Contains(out, "INFO daemon status=stopped") {
+			t.Errorf("exit %d, output %q, body %s; want exit 0 with %s, status=ok and status=stopped", code, out, body, wantLastReconcile)
+		}
+	})
+
+	t.Run("Should post every reconcile and lastReconcile null without MANIFEST_URL", func(t *testing.T) {
+		dir := t.TempDir()
+		webhookURL, requests := startHoldingWebhook(t, released())
+		writeEnvContent(t, dir, "WEBHOOK_URL="+webhookURL+"\nEASYPANEL_URL="+startEasypanel(t)+"\nEASYPANEL_TOKEN=easypanel-token\n")
+		unsetKeys(t)
+		t.Setenv("DOCKER_SOCKET", startReportEngine(t))
+		t.Setenv("TALON_HOST_ROOT", newHostRoot(t))
+		process := cli.Start(t, dir, "daemon")
+
+		body := receiveRequest(t, requests)
+		process.Signal(t, syscall.SIGTERM)
+		out, code := process.Wait(t)
+
+		if code != 0 || !strings.Contains(string(body), `{"name":"shop","reconcile":null,`) || !strings.Contains(string(body), `"lastReconcile":null`) || !strings.Contains(out, "INFO daemon status=stopped") {
+			t.Errorf("exit %d, output %q, body %s; want exit 0 with every reconcile and lastReconcile null and status=stopped", code, out, body)
+		}
+	})
 }

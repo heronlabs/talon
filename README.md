@@ -12,9 +12,9 @@ The Heron Labs agent for Easypanel hosts. A static Go binary with five commands.
 |---|---|
 | `talon version` | Prints the version the binary was built with. |
 | `talon setup` | Writes `/etc/talon/.env` with mode `600`, asking for every value that is not in the environment. |
-| `talon doctor` | Checks that `/etc/talon/.env` exists with mode `600` and that the Docker Engine answers `GET /_ping` on its socket within 5 seconds. |
-| `talon report` | Collects from the host its RAM and swap, total and used, from `/proc/meminfo`, the total and used size of the disk of `/` from statfs, the load over 1, 5 and 15 minutes from `/proc/loadavg` and the uptime from `/proc/uptime`; from the Docker Engine the size of the images and build cache, the Easypanel version in `/app/package.json` of the running `easypanel` container, with whether talon supports it (`2.36.0`), and, for each service of each Easypanel project, its state, replicas, failed tasks, limits, memory, CPU, network, block I/O and disk: its named volumes plus the files of `/etc/easypanel/projects/<project>/<service>`. Then it posts the report as JSON to `WEBHOOK_URL`, with the hostname of the machine as its host and `Authorization: Bearer` when `WEBHOOK_TOKEN` is set. Without `WEBHOOK_URL` it sends nothing. Either way it logs the report as JSON in `payload`. Without a running `easypanel` container, or when the Docker Engine answers `404` for its `/app/package.json`, the Easypanel version and whether it is supported are null. A container that the Docker Engine no longer finds when talon asks for its stats, as during a deploy, is reported without them. It asks for the stats of up to 8 containers at once. |
-| `talon daemon` | Runs `report` at once and then every `INTERVAL_REPORT`, until SIGTERM or SIGINT. It reads `INTERVAL_REPORT` once, when it starts, so a change needs a restart; it reads `WEBHOOK_URL` and `WEBHOOK_TOKEN` on every cycle, so what `talon setup` writes counts from the next cycle. Without `.env` it runs on the defaults and sends nothing. Each cycle runs for at most `INTERVAL_REPORT` or 60 seconds, whichever is shorter; a cycle that fails or runs past that is logged and the daemon goes on. On SIGTERM or SIGINT it starts no other cycle, waits for the one in flight and exits `0`. `INTERVAL_REPORT` is a duration such as `10m` or `90s`; when it is not one, or is not positive, the daemon exits `1`. |
+| `talon doctor` | Checks that `/etc/talon/.env` exists with mode `600`, that the Docker Engine answers `GET /_ping` on its socket within 5 seconds and, when `EASYPANEL_TOKEN` is set, that the Easypanel API at `EASYPANEL_URL` answers `getUser` with the user of that token. |
+| `talon report` | Collects from the host its RAM and swap, total and used, from `/proc/meminfo`, the total and used size of the disk of `/` from statfs, the load over 1, 5 and 15 minutes from `/proc/loadavg` and the uptime from `/proc/uptime`; from the Docker Engine the size of the images and build cache, the Easypanel version in `/app/package.json` of the running `easypanel` container, with whether talon supports it (`2.36.0`), and, for each service of each Easypanel project, its state, replicas, failed tasks, limits, memory, CPU, network, block I/O and disk: its named volumes plus the files of `/etc/easypanel/projects/<project>/<service>`. With `MANIFEST_URL` set, it also compares each project with the manifest of the host, as described in [Reconcile](#reconcile). Then it posts the report as JSON to `WEBHOOK_URL`, with the hostname of the machine as its host and `Authorization: Bearer` when `WEBHOOK_TOKEN` is set. Without `WEBHOOK_URL` it sends nothing. Either way it logs the report as JSON in `payload`. Without a running `easypanel` container, or when the Docker Engine answers `404` for its `/app/package.json`, the Easypanel version and whether it is supported are null. A container that the Docker Engine no longer finds when talon asks for its stats, as during a deploy, is reported without them. It asks for the stats of up to 8 containers at once. |
+| `talon daemon` | Runs `report` at once and then every `INTERVAL_REPORT`, until SIGTERM or SIGINT. It reads `INTERVAL_REPORT` once, when it starts, so a change needs a restart; it reads `WEBHOOK_URL`, `WEBHOOK_TOKEN`, `MANIFEST_URL`, `MANIFEST_TOKEN`, `EASYPANEL_URL` and `EASYPANEL_TOKEN` on every cycle, so what `talon setup` writes counts from the next cycle. Without `.env` it runs on the defaults and sends nothing. Each cycle runs for at most `INTERVAL_REPORT` or 60 seconds, whichever is shorter; a cycle that fails or runs past that is logged and the daemon goes on. On SIGTERM or SIGINT it starts no other cycle, waits for the one in flight and exits `0`. `INTERVAL_REPORT` is a duration such as `10m` or `90s`; when it is not one, or is not positive, the daemon exits `1`. |
 
 Any other command, or none, is an error.
 
@@ -48,9 +48,19 @@ To roll back, disable the timer first, then run `sudo apt install talon=<version
 
 ## The daemon
 
-The package installs `talon.service`, which runs `/usr/bin/talon daemon` as root, after the network and Docker, and restarts it when it fails. It sees the file system read-only (`ProtectSystem=strict`): it only reads `/etc/talon`, `/proc` and `/etc/easypanel` and talks to the Docker socket. Install enables and starts it; its log is in `journalctl -u talon`.
+The package installs `talon.service`, which runs `/usr/bin/talon daemon` as root, after the network and Docker, and restarts it when it fails. It sees the file system read-only (`ProtectSystem=strict`): it only reads `/etc/talon`, `/proc` and `/etc/easypanel`, talks to the Docker socket and, with `MANIFEST_URL` set, reads the manifest and the Easypanel API. Install enables and starts it; its log is in `journalctl -u talon`.
 
 On `systemctl stop`, the daemon waits for the cycle in flight, at most 60 seconds, and systemd gives it 90 seconds before it kills it. Every upgrade of the package restarts it, which is when the reports start to carry the new version; that restart holds `apt` until the cycle in flight ends. `sudo systemctl disable --now talon` turns it off and `sudo systemctl enable --now talon` turns it back on; upgrades keep that choice. `TALON_NO_UPDATES` affects only the upgrade timer.
+
+## Reconcile
+
+With `MANIFEST_URL` set, `report`, and each cycle of `daemon`, compare the host with its manifest, and only read. Talon gets the manifest at `MANIFEST_URL`, with `Authorization: Bearer` when `MANIFEST_TOKEN` is set: the clients the host runs and the Easypanel schema of each. Then it reads the Easypanel API at `EASYPANEL_URL` with `Authorization: Bearer` and `EASYPANEL_TOKEN`, `GET /api/<operation>`: `listProjectsAndServices`, then `inspectAppService`, `inspectPostgresService` or `inspectMySQLService` for each app, postgres or mysql service it lists, and `listDomains` for each app. It writes nothing to Easypanel.
+
+- The projects are the Swarm projects, in the order they first appear, then each client of the manifest without a Swarm service, in the order of the manifest. Each project lists its Swarm services, then each service its client declares without a Swarm service, `missing` and with every number `0`. A service is `managed` when its client declares it.
+- The `reconcile` of a project is `unmanaged` when the project is not in the manifest, `converged` when Easypanel holds every service its client declares, with the same type and the declared configuration, and `pending` otherwise, with `missingSecrets` `[]` and `error` `null`. A service Easypanel does not list is `pending`, not an error.
+- A declared configuration matches on the keys it declares, at any depth: a key Easypanel holds that the schema does not declare is ignored, a declared `null` matches `null` or an absent key, numbers compare as numbers, and the items of an array match one to one, in any order. `projectName`, `serviceName`, `env` and `password` are not compared. The domains of an app are compared in the shape of the schema: `port` and `internalProtocol` are those of the service the domain routes to.
+- `agent.lastReconcile` is `{at, outcome, error}`: `at` is `measuredAt` and `outcome` is `ok`, or `failed` with the error of the manifest (`manifest: …`) or of Easypanel (`easypanel: …`), cut to 500 characters. When the manifest fails, talon does not call Easypanel; when Easypanel fails, the clients of the manifest, their declared services and `managed` are still reported. Either way every `reconcile` is `null` and the report is still sent.
+- Without `MANIFEST_URL`, every `reconcile` and `lastReconcile` is `null` and `managed` is `false`.
 
 ## Use
 
@@ -73,7 +83,7 @@ WEBHOOK_URL: https://webhook.example.com
 AWS_REGION [us-east-1]:
 ```
 
-The fallback is the value already in `.env` or, without one, the default of the key. The fallback of a token or secret key is shown as `[****]`, and when the input is a terminal what you type for it is not echoed; Ctrl+C turns the echo back on and still ends `setup`. An empty answer keeps the fallback. When `WEBHOOK_URL` ends up empty, `setup` does not ask for `WEBHOOK_TOKEN` and leaves it empty. A key with no default is required, except `WEBHOOK_URL` and `WEBHOOK_TOKEN`: when any required key ends up empty, `setup` lists them and writes nothing. Otherwise it replaces `.env` with the six keys, mode `600`. Lines of the old `.env` that are not one of the keys are dropped.
+The fallback is the value already in `.env` or, without one, the default of the key. The fallback of a token or secret key is shown as `[****]`, and when the input is a terminal what you type for it is not echoed; Ctrl+C turns the echo back on and still ends `setup`. An empty answer keeps the fallback. When `WEBHOOK_URL` ends up empty, `setup` does not ask for `WEBHOOK_TOKEN` and leaves it empty; when `MANIFEST_URL` ends up empty, it does not ask for `MANIFEST_TOKEN`, `EASYPANEL_URL` and `EASYPANEL_TOKEN` and leaves them empty. A key with no default is required, except `WEBHOOK_URL`, `WEBHOOK_TOKEN`, `MANIFEST_URL` and `MANIFEST_TOKEN`, and `EASYPANEL_TOKEN` is required only when `MANIFEST_URL` is set: when any required key ends up empty, `setup` lists them and writes nothing. Otherwise it replaces `.env` with the ten keys, mode `600`. Lines of the old `.env` that are not one of the keys are dropped.
 
 Each command logs one line with its result and exits `0` on success or `1` on failure; `daemon` logs the line of `report` on every cycle and one line when it stops:
 
@@ -83,6 +93,7 @@ Each command logs one line with its result and exits `0` on success or `1` on fa
 2026/10/04 20:05:40 ERROR setup error="config: missing AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY"
 2026/10/04 20:05:40 INFO doctor status=ok
 2026/10/04 20:05:40 ERROR doctor error="config: .env has mode 644, want 600"
+2026/10/04 20:05:40 ERROR doctor error="easypanel: token refused"
 2026/10/04 20:05:40 INFO report status=ok payload="{\"host\":\"vps-01\",...}"
 2026/10/04 20:05:40 ERROR report error="webhook: unexpected status: 401"
 2026/10/04 20:05:40 INFO daemon status=stopped
@@ -102,7 +113,7 @@ Each release is also published to the apt repository at `https://apt.heronlabs.c
 make build              # static binary in bin/talon
 make package            # Linux binary and its .deb in dist/
 make test               # unit tests with coverage
-make test:integration   # runs the real binary against a fake Docker Engine
+make test:integration   # runs the real binary against a fake Docker Engine, CMS and Easypanel API
 make up                 # fake VPS: Ubuntu, systemd, Docker and Easypanel in a container
 ```
 

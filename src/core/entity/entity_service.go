@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/heronlabs/talon/src/infrastructure/docker"
+	"github.com/heronlabs/talon/src/infrastructure/manifest"
 )
 
 // The container states, removing, the state of a container being removed, and missing, the state of a service without containers.
@@ -18,6 +19,9 @@ const (
 	containerRemoving = "removing"
 	stateMissing      = "missing"
 )
+
+// serviceNameKey is the key of the name of a service in the data of the schema.
+const serviceNameKey = "serviceName"
 
 // The states of a task that count as failures, the mount type of a named volume, the inactive file of the memory stats in cgroup v1 and v2, and the block I/O operations that count as read and write.
 const (
@@ -62,12 +66,13 @@ type Service struct {
 	BlockWriteMB       float64 `json:"blockWriteMB"`
 }
 
-// NewService returns the service named name for the Swarm service: the state of its containers in snapshot, its replicas, its failed tasks, its limits, the size of its named volumes plus dirSize, the bytes of its directory, and the stats of its containers.
-func NewService(name string, service docker.SwarmService, snapshot docker.Snapshot, dirSize int64) Service {
+// NewService returns the service named name for the Swarm service, managed when client, the entry of its project in the manifest or nil, declares it: the state of its containers in snapshot, its replicas, its failed tasks, its limits, the size of its named volumes plus dirSize, the bytes of its directory, and the stats of its containers.
+func NewService(name string, service docker.SwarmService, snapshot docker.Snapshot, dirSize int64, client *manifest.Client) Service {
 	containers := serviceContainers(snapshot.Containers, service.Spec.Name)
 	limits := service.Spec.TaskTemplate.Resources.Limits
 	entry := Service{
 		Name:               name,
+		Managed:            slices.Contains(declaredNames(client), name),
 		State:              serviceState(containers),
 		ReplicasRunning:    service.ServiceStatus.RunningTasks,
 		ReplicasDesired:    service.ServiceStatus.DesiredTasks,
@@ -79,6 +84,32 @@ func NewService(name string, service docker.SwarmService, snapshot docker.Snapsh
 	entry.addContainersStats(containers, snapshot.Stats)
 
 	return entry
+}
+
+// NewMissingService returns the service named name that the manifest declares without a Swarm service: managed, missing and with every number 0.
+func NewMissingService(name string) Service {
+	return Service{Name: name, Managed: true, State: stateMissing}
+}
+
+// declaredNames returns the name of each service that client declares in its schema, none without client.
+func declaredNames(client *manifest.Client) []string {
+	if client == nil {
+		return nil
+	}
+
+	names := make([]string, 0, len(client.Schema.Services))
+	for _, service := range client.Schema.Services {
+		names = append(names, declaredName(service))
+	}
+
+	return names
+}
+
+// declaredName returns the serviceName of the data of service, empty when it is not a string.
+func declaredName(service manifest.Service) string {
+	name, _ := service.Data[serviceNameKey].(string)
+
+	return name
 }
 
 // addContainersStats adds the stats of each of containers that has an entry in stats.
