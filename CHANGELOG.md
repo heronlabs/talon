@@ -1,3 +1,9 @@
+## v0.9.1 (2026-10-13)
+
+### Bug Fixes
+
+* fix: hide the value typed for a secret key in setup (#19) (ac245060e0c4887699b22bbdb23b2535578070a8)
+
 ## v0.9.0 (2026-10-09)
 
 ### Features
