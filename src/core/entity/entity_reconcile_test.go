@@ -47,14 +47,14 @@ func TestReconcile(t *testing.T) {
 		}
 	})
 
-	t.Run("Should be converged when the client declares no service", func(t *testing.T) {
-		client := decode[manifest.Client](t, `{"slug":"shop","schema":{"services":[]}}`)
+	t.Run("Should be pending when the client declares no service", func(t *testing.T) {
+		client := decode[manifest.Client](t, `{"slug":"shop","lifecycle":"provisioning","secretsRoleArn":null}`)
 		configured := &easypanel.ConfigSnapshot{}
 
 		reconcile := NewReconcile("shop", &client, configured)
 
-		if reconcile == nil || reconcile.State != "converged" {
-			t.Errorf("NewReconcile() = %+v, want state %q", reconcile, "converged")
+		if reconcile == nil || reconcile.State != "pending" {
+			t.Errorf("NewReconcile() = %+v, want state %q", reconcile, "pending")
 		}
 	})
 

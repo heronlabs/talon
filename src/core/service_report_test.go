@@ -519,7 +519,7 @@ func TestReportService(t *testing.T) {
 		declared.Data.Clients = []manifest.Client{{Slug: "shop"}}
 		sender := &fakeReportSender{}
 		service := NewReportService(&fakeDockerCollector{}, &fakeHostCollector{}, &fakeEasypanelCollector{}, &fakeManifestReader{manifest: declared}, &fakeEasypanelConfigCollector{snapshot: &easypanel.ConfigSnapshot{}}, sender, config, "1.2.3", hostname, now)
-		wantProjects := []entity.Project{{Name: "shop", Reconcile: &entity.Reconcile{State: "converged", MissingSecrets: []string{}}, Services: []entity.Service{}}}
+		wantProjects := []entity.Project{{Name: "shop", Reconcile: &entity.Reconcile{State: "pending", MissingSecrets: []string{}}, Services: []entity.Service{}}}
 		wantLastReconcile := &entity.LastReconcile{At: "2026-10-08T12:30:15Z", Outcome: "ok"}
 
 		_, _ = service.Send(t.Context())

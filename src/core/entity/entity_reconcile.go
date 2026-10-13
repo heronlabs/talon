@@ -7,7 +7,7 @@ import (
 	"github.com/heronlabs/talon/src/infrastructure/manifest"
 )
 
-// The states of the reconcile of a project: not in the manifest, every declared service matching its configuration, or not.
+// The states of the reconcile of a project: not in the manifest, at least one declared service and every one matching its configuration, or not.
 const (
 	reconcileUnmanaged = "unmanaged"
 	reconcileConverged = "converged"
@@ -24,7 +24,7 @@ type Reconcile struct {
 	Error          *string  `json:"error"`
 }
 
-// NewReconcile returns the reconcile of the project name: nil without configured, as without MANIFEST_URL or when the observation failed; otherwise unmanaged without client, its entry in the manifest, converged when every service client declares matches the service of the same name configured holds in the project, and pending when one does not, with no missing secret and no error.
+// NewReconcile returns the reconcile of the project name: nil without configured, as without MANIFEST_URL or when the observation failed; otherwise unmanaged without client, its entry in the manifest, converged when client declares at least one service and every one matches the service of the same name configured holds in the project, and pending when it declares none or one does not match, with no missing secret and no error.
 func NewReconcile(name string, client *manifest.Client, configured *easypanel.ConfigSnapshot) *Reconcile {
 	if configured == nil {
 		return nil
@@ -33,7 +33,7 @@ func NewReconcile(name string, client *manifest.Client, configured *easypanel.Co
 	return &Reconcile{State: reconcileState(client, configured.Services[name]), MissingSecrets: []string{}}
 }
 
-// reconcileState returns unmanaged without client, converged when every service it declares matches its service in configured and pending otherwise.
+// reconcileState returns unmanaged without client, converged when it declares at least one service and every one matches its service in configured, and pending otherwise.
 func reconcileState(client *manifest.Client, configured map[string]easypanel.ServiceConfig) string {
 	if client == nil {
 		return reconcileUnmanaged
@@ -46,8 +46,12 @@ func reconcileState(client *manifest.Client, configured map[string]easypanel.Ser
 	return reconcilePending
 }
 
-// converged reports whether every service of declared matches its service in configured.
+// converged reports whether declared holds at least one service and every one matches its service in configured.
 func converged(declared []manifest.Service, configured map[string]easypanel.ServiceConfig) bool {
+	if len(declared) == 0 {
+		return false
+	}
+
 	for _, service := range declared {
 		if !serviceMatches(service, configured) {
 			return false
