@@ -30,6 +30,7 @@ linters:
             - github.com/heronlabs/talon/src/infrastructure/docker
             - github.com/heronlabs/talon/src/infrastructure/easypanel
             - github.com/heronlabs/talon/src/infrastructure/host
+            - github.com/heronlabs/talon/src/infrastructure/manifest
         infrastructure:
           files: ["**/src/infrastructure/**", "!$test"]
           deny:

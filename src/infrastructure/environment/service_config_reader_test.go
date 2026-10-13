@@ -42,6 +42,10 @@ func TestConfigReaderService(t *testing.T) {
 		want := []Key{
 			{Name: "WEBHOOK_URL", Optional: true},
 			{Name: "WEBHOOK_TOKEN", Secret: true, Optional: true, DependsOn: "WEBHOOK_URL"},
+			{Name: "MANIFEST_URL", Optional: true},
+			{Name: "MANIFEST_TOKEN", Secret: true, Optional: true, DependsOn: "MANIFEST_URL"},
+			{Name: "EASYPANEL_URL", Default: "http://localhost:3000", DependsOn: "MANIFEST_URL"},
+			{Name: "EASYPANEL_TOKEN", Secret: true, DependsOn: "MANIFEST_URL"},
 			{Name: "AWS_ACCESS_KEY_ID"},
 			{Name: "AWS_SECRET_ACCESS_KEY", Secret: true},
 			{Name: "AWS_REGION", Default: "us-east-1"},
@@ -58,7 +62,7 @@ func TestConfigReaderService(t *testing.T) {
 	t.Run("Should require a key without default", func(t *testing.T) {
 		key := Key{Name: "WEBHOOK_URL"}
 
-		required := key.Required()
+		required := key.Required(map[string]string{})
 
 		if !required {
 			t.Errorf("Required() = %v, want %v", required, true)
@@ -68,10 +72,32 @@ func TestConfigReaderService(t *testing.T) {
 	t.Run("Should not require a key with default", func(t *testing.T) {
 		key := Key{Name: "AWS_REGION", Default: "us-east-1"}
 
-		required := key.Required()
+		required := key.Required(map[string]string{})
 
 		if required {
 			t.Errorf("Required() = %v, want %v", required, false)
+		}
+	})
+
+	t.Run("Should not require a key whose dependency is empty", func(t *testing.T) {
+		key := Key{Name: "EASYPANEL_TOKEN", Secret: true, DependsOn: "MANIFEST_URL"}
+		values := map[string]string{"MANIFEST_URL": ""}
+
+		required := key.Required(values)
+
+		if required {
+			t.Errorf("Required() = %v, want %v", required, false)
+		}
+	})
+
+	t.Run("Should require a key whose dependency has a value", func(t *testing.T) {
+		key := Key{Name: "EASYPANEL_TOKEN", Secret: true, DependsOn: "MANIFEST_URL"}
+		values := map[string]string{"MANIFEST_URL": "https://cms.example.com/api/infra-manifests/vps-01"}
+
+		required := key.Required(values)
+
+		if !required {
+			t.Errorf("Required() = %v, want %v", required, true)
 		}
 	})
 
@@ -214,6 +240,29 @@ func TestConfigReaderService(t *testing.T) {
 
 		if !maps.Equal(values, want) {
 			t.Errorf("Read() = %v, want %v", values, want)
+		}
+	})
+
+	t.Run("Should not list as missing a required key whose dependency is empty", func(t *testing.T) {
+		keys := []Key{{Name: "MANIFEST_URL", Optional: true}, {Name: "EASYPANEL_TOKEN", Secret: true, DependsOn: "MANIFEST_URL"}}
+		reader := NewConfigReaderService(fstest.MapFS{}, keys, fakeEnv{}.Getenv, fakePrompt{})
+
+		_, err := reader.Read()
+
+		if err != nil {
+			t.Errorf("Read() = %v, want nil", err)
+		}
+	})
+
+	t.Run("Should list as missing a required key whose dependency has a value", func(t *testing.T) {
+		keys := []Key{{Name: "MANIFEST_URL", Optional: true}, {Name: "EASYPANEL_TOKEN", Secret: true, DependsOn: "MANIFEST_URL"}}
+		env := fakeEnv{"MANIFEST_URL": "https://cms.example.com/api/infra-manifests/vps-01"}
+		reader := NewConfigReaderService(fstest.MapFS{}, keys, env.Getenv, fakePrompt{})
+
+		_, err := reader.Read()
+
+		if err == nil || err.Error() != "missing EASYPANEL_TOKEN" {
+			t.Errorf("Read() = %v, want %q", err, "missing EASYPANEL_TOKEN")
 		}
 	})
 

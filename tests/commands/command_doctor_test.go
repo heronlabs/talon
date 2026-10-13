@@ -115,4 +115,56 @@ func TestDoctorCommand(t *testing.T) {
 			t.Errorf("exit %d, output %q; want exit 1 with docker error", code, out)
 		}
 	})
+
+	t.Run("Should pass when Easypanel accepts EASYPANEL_TOKEN", func(t *testing.T) {
+		dir := t.TempDir()
+		writeEnvContent(t, dir, "EASYPANEL_URL="+startEasypanel(t)+"\nEASYPANEL_TOKEN=easypanel-token\n")
+		unsetKeys(t)
+		t.Setenv("DOCKER_SOCKET", startEngine(t))
+
+		out, code := cli.Run(t, dir, "doctor")
+
+		if code != 0 || !strings.Contains(out, "INFO doctor status=ok") {
+			t.Errorf("exit %d, output %q; want exit 0 with status=ok", code, out)
+		}
+	})
+
+	t.Run("Should fail when Easypanel refuses EASYPANEL_TOKEN", func(t *testing.T) {
+		dir := t.TempDir()
+		writeEnvContent(t, dir, "EASYPANEL_URL="+startEasypanel(t)+"\nEASYPANEL_TOKEN=wrong\n")
+		unsetKeys(t)
+		t.Setenv("DOCKER_SOCKET", startEngine(t))
+
+		out, code := cli.Run(t, dir, "doctor")
+
+		if code != 1 || !strings.Contains(out, `ERROR doctor error="easypanel: token refused"`) {
+			t.Errorf("exit %d, output %q; want exit 1 with token refused", code, out)
+		}
+	})
+
+	t.Run("Should fail when Easypanel answers getUser with an error", func(t *testing.T) {
+		dir := t.TempDir()
+		writeEnvContent(t, dir, "EASYPANEL_URL="+startEasypanelReplying(t, "GET /api/getUser", http.StatusInternalServerError, "")+"\nEASYPANEL_TOKEN=easypanel-token\n")
+		unsetKeys(t)
+		t.Setenv("DOCKER_SOCKET", startEngine(t))
+
+		out, code := cli.Run(t, dir, "doctor")
+
+		if code != 1 || !strings.Contains(out, `ERROR doctor error="easypanel: getUser: unexpected status: 500"`) {
+			t.Errorf("exit %d, output %q; want exit 1 with getUser: unexpected status: 500", code, out)
+		}
+	})
+
+	t.Run("Should fail when .env cannot be parsed", func(t *testing.T) {
+		dir := t.TempDir()
+		writeEnvContent(t, dir, "EASYPANEL_TOKEN\n")
+		unsetKeys(t)
+		t.Setenv("DOCKER_SOCKET", startEngine(t))
+
+		out, code := cli.Run(t, dir, "doctor")
+
+		if code != 1 || !strings.Contains(out, `ERROR doctor error="config: .env line 1: want KEY=VALUE"`) {
+			t.Errorf("exit %d, output %q; want exit 1 with the parse error of line 1", code, out)
+		}
+	})
 }

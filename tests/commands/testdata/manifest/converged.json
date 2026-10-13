@@ -1,0 +1,69 @@
+{
+  "data": {
+    "host": "vps-01",
+    "clients": [
+      {
+        "slug": "cms-heronlabs",
+        "lifecycle": "active",
+        "secretsRoleArn": null,
+        "schema": {
+          "services": [
+            {
+              "type": "app",
+              "data": {
+                "projectName": "cms-heronlabs",
+                "serviceName": "cms-api",
+                "deploy": {
+                  "command": null,
+                  "replicas": 1,
+                  "zeroDowntime": true
+                },
+                "mounts": [],
+                "ports": [],
+                "source": {
+                  "image": "nginx:latest",
+                  "type": "image"
+                },
+                "resources": {
+                  "cpuLimit": 1,
+                  "cpuReservation": 0.1,
+                  "memoryLimit": 1024,
+                  "memoryReservation": 256
+                },
+                "domains": [
+                  {
+                    "certificateResolver": "",
+                    "host": "cms-heronlabs-cms-api.example.easypanel.host",
+                    "https": true,
+                    "internalProtocol": "http",
+                    "middlewares": [],
+                    "path": "/",
+                    "port": 80,
+                    "wildcard": false
+                  }
+                ]
+              }
+            },
+            {
+              "type": "postgres",
+              "data": {
+                "projectName": "cms-heronlabs",
+                "serviceName": "cms-database",
+                "databaseName": "cms-heronlabs",
+                "exposedPort": 0,
+                "image": "postgres:18",
+                "user": "postgres",
+                "resources": {
+                  "cpuLimit": 0.5,
+                  "cpuReservation": 0.1,
+                  "memoryLimit": 512,
+                  "memoryReservation": 128
+                }
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

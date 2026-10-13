@@ -1,0 +1,19 @@
+{
+  "databaseName": "cms-heronlabs",
+  "enabled": true,
+  "exposedPort": 0,
+  "image": "postgres:18",
+  "name": "cms-database",
+  "password": "scrubbed-password",
+  "projectName": "cms-heronlabs",
+  "type": "postgres",
+  "user": "postgres",
+  "resources": {
+    "cpuLimit": 0.5,
+    "cpuReservation": 0.1,
+    "memoryLimit": 512,
+    "memoryReservation": 128
+  },
+  "dbGateDomain": "cms-heronlabs-cms-database-dbgate.example.easypanel.host",
+  "pgWebDomain": "cms-heronlabs-cms-database-pgweb.example.easypanel.host"
+}

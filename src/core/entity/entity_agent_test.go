@@ -11,7 +11,7 @@ func TestAgent(t *testing.T) {
 	t.Run("Should leave the Easypanel version and whether it is supported null without the Easypanel package", func(t *testing.T) {
 		want := Agent{Version: "1.2.3"}
 
-		agent := NewAgent("1.2.3", nil)
+		agent := NewAgent("1.2.3", nil, nil)
 
 		if !reflect.DeepEqual(agent, want) {
 			t.Errorf("NewAgent() = %+v, want %+v", agent, want)
@@ -24,7 +24,7 @@ func TestAgent(t *testing.T) {
 		supported := true
 		want := Agent{Version: "1.2.3", EasypanelVersion: &easypanelVersion, EasypanelSupported: &supported}
 
-		agent := NewAgent("1.2.3", &easypanelPackage)
+		agent := NewAgent("1.2.3", &easypanelPackage, nil)
 
 		if !reflect.DeepEqual(agent, want) {
 			t.Errorf("NewAgent() = %+v, want %+v", agent, want)
@@ -37,7 +37,32 @@ func TestAgent(t *testing.T) {
 		supported := false
 		want := Agent{Version: "1.2.3", EasypanelVersion: &easypanelVersion, EasypanelSupported: &supported}
 
-		agent := NewAgent("1.2.3", &easypanelPackage)
+		agent := NewAgent("1.2.3", &easypanelPackage, nil)
+
+		if !reflect.DeepEqual(agent, want) {
+			t.Errorf("NewAgent() = %+v, want %+v", agent, want)
+		}
+	})
+
+	t.Run("Should carry the last reconcile without the Easypanel package", func(t *testing.T) {
+		lastReconcile := &LastReconcile{At: "2026-10-08T12:30:15Z", Outcome: "ok"}
+		want := Agent{Version: "1.2.3", LastReconcile: lastReconcile}
+
+		agent := NewAgent("1.2.3", nil, lastReconcile)
+
+		if !reflect.DeepEqual(agent, want) {
+			t.Errorf("NewAgent() = %+v, want %+v", agent, want)
+		}
+	})
+
+	t.Run("Should carry the last reconcile with the Easypanel package", func(t *testing.T) {
+		easypanelPackage := decode[docker.EasypanelPackage](t, `{"name":"easypanel","version":"2.36.0"}`)
+		lastReconcile := &LastReconcile{At: "2026-10-08T12:30:15Z", Outcome: "ok"}
+		easypanelVersion := "2.36.0"
+		supported := true
+		want := Agent{Version: "1.2.3", EasypanelVersion: &easypanelVersion, EasypanelSupported: &supported, LastReconcile: lastReconcile}
+
+		agent := NewAgent("1.2.3", &easypanelPackage, lastReconcile)
 
 		if !reflect.DeepEqual(agent, want) {
 			t.Errorf("NewAgent() = %+v, want %+v", agent, want)

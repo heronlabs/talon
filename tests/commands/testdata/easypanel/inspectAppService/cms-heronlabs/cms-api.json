@@ -1,0 +1,27 @@
+{
+  "enabled": true,
+  "name": "cms-api",
+  "primaryDomainId": "cmv5quaho000507p5ghc030nh",
+  "projectName": "cms-heronlabs",
+  "token": "scrubbed-token",
+  "type": "app",
+  "deploy": {
+    "command": null,
+    "replicas": 1,
+    "zeroDowntime": true
+  },
+  "env": "",
+  "mounts": [],
+  "ports": [],
+  "source": {
+    "image": "nginx:latest",
+    "type": "image"
+  },
+  "resources": {
+    "cpuLimit": 1,
+    "cpuReservation": 0.1,
+    "memoryLimit": 1024,
+    "memoryReservation": 256
+  },
+  "deploymentUrl": "http://easypanel.example.com:3000/api/deploy/scrubbed-token"
+}

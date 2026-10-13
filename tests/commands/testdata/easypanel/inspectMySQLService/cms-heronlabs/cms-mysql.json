@@ -1,0 +1,20 @@
+{
+  "databaseName": "cms-heronlabs",
+  "enabled": true,
+  "exposedPort": 0,
+  "image": "mysql:9",
+  "name": "cms-mysql",
+  "password": "scrubbed-password",
+  "projectName": "cms-heronlabs",
+  "rootPassword": "scrubbed-root-password",
+  "type": "mysql",
+  "user": "mysql",
+  "resources": {
+    "cpuLimit": 0.5,
+    "cpuReservation": 0.1,
+    "memoryLimit": 512,
+    "memoryReservation": 128
+  },
+  "dbGateDomain": "cms-heronlabs-cms-mysql-dbgate.example.easypanel.host",
+  "phpMyAdminDomain": "cms-heronlabs-cms-mysql-phpmyadmin.example.easypanel.host"
+}

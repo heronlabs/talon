@@ -25,6 +25,10 @@ func unsetKeys(t *testing.T) {
 
 	t.Setenv("WEBHOOK_URL", "")
 	t.Setenv("WEBHOOK_TOKEN", "")
+	t.Setenv("MANIFEST_URL", "")
+	t.Setenv("MANIFEST_TOKEN", "")
+	t.Setenv("EASYPANEL_URL", "")
+	t.Setenv("EASYPANEL_TOKEN", "")
 	t.Setenv("AWS_ACCESS_KEY_ID", "")
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "")
 	t.Setenv("AWS_REGION", "")
@@ -34,9 +38,9 @@ func unsetKeys(t *testing.T) {
 func TestSetupCommand(t *testing.T) {
 	t.Run("Should write every key to .env from the existing values and the defaults", func(t *testing.T) {
 		dir := t.TempDir()
-		writeEnvContent(t, dir, "WEBHOOK_URL=https://webhook.example.com\nWEBHOOK_TOKEN=token\nAWS_ACCESS_KEY_ID=id\nAWS_SECRET_ACCESS_KEY=secret\n")
+		writeEnvContent(t, dir, "WEBHOOK_URL=https://webhook.example.com\nWEBHOOK_TOKEN=token\nMANIFEST_URL=https://cms.example.com/api/infra-manifests/vps-01\nEASYPANEL_TOKEN=easypanel-token\nAWS_ACCESS_KEY_ID=id\nAWS_SECRET_ACCESS_KEY=secret\n")
 		unsetKeys(t)
-		want := "WEBHOOK_URL=https://webhook.example.com\nWEBHOOK_TOKEN=token\nAWS_ACCESS_KEY_ID=id\nAWS_SECRET_ACCESS_KEY=secret\nAWS_REGION=us-east-1\nINTERVAL_REPORT=10m\n"
+		want := "WEBHOOK_URL=https://webhook.example.com\nWEBHOOK_TOKEN=token\nMANIFEST_URL=https://cms.example.com/api/infra-manifests/vps-01\nMANIFEST_TOKEN=\nEASYPANEL_URL=http://localhost:3000\nEASYPANEL_TOKEN=easypanel-token\nAWS_ACCESS_KEY_ID=id\nAWS_SECRET_ACCESS_KEY=secret\nAWS_REGION=us-east-1\nINTERVAL_REPORT=10m\n"
 
 		out, code := cli.Run(t, dir, "setup")
 		content, _ := fs.ReadFile(os.DirFS(dir), ".env")
@@ -50,11 +54,15 @@ func TestSetupCommand(t *testing.T) {
 		dir := t.TempDir()
 		t.Setenv("WEBHOOK_URL", "https://webhook.example.com")
 		t.Setenv("WEBHOOK_TOKEN", "webhook-token")
+		t.Setenv("MANIFEST_URL", "https://cms.example.com/api/infra-manifests/vps-01")
+		t.Setenv("MANIFEST_TOKEN", "manifest-token")
+		t.Setenv("EASYPANEL_URL", "http://easypanel.example.com")
+		t.Setenv("EASYPANEL_TOKEN", "easypanel-token")
 		t.Setenv("AWS_ACCESS_KEY_ID", "id")
 		t.Setenv("AWS_SECRET_ACCESS_KEY", "secret")
 		t.Setenv("AWS_REGION", "sa-east-1")
 		t.Setenv("INTERVAL_REPORT", "2m")
-		want := "WEBHOOK_URL=https://webhook.example.com\nWEBHOOK_TOKEN=webhook-token\nAWS_ACCESS_KEY_ID=id\nAWS_SECRET_ACCESS_KEY=secret\nAWS_REGION=sa-east-1\nINTERVAL_REPORT=2m\n"
+		want := "WEBHOOK_URL=https://webhook.example.com\nWEBHOOK_TOKEN=webhook-token\nMANIFEST_URL=https://cms.example.com/api/infra-manifests/vps-01\nMANIFEST_TOKEN=manifest-token\nEASYPANEL_URL=http://easypanel.example.com\nEASYPANEL_TOKEN=easypanel-token\nAWS_ACCESS_KEY_ID=id\nAWS_SECRET_ACCESS_KEY=secret\nAWS_REGION=sa-east-1\nINTERVAL_REPORT=2m\n"
 
 		out, code := cli.Run(t, dir, "setup")
 		content, _ := fs.ReadFile(os.DirFS(dir), ".env")
@@ -67,9 +75,9 @@ func TestSetupCommand(t *testing.T) {
 	t.Run("Should write every key to .env from the typed answers", func(t *testing.T) {
 		dir := t.TempDir()
 		unsetKeys(t)
-		want := "WEBHOOK_URL=https://webhook.example.com\nWEBHOOK_TOKEN=typed-token\nAWS_ACCESS_KEY_ID=id\nAWS_SECRET_ACCESS_KEY=secret\nAWS_REGION=sa-east-1\nINTERVAL_REPORT=5m\n"
+		want := "WEBHOOK_URL=https://webhook.example.com\nWEBHOOK_TOKEN=typed-token\nMANIFEST_URL=https://cms.example.com/api/infra-manifests/vps-01\nMANIFEST_TOKEN=typed-manifest-token\nEASYPANEL_URL=http://easypanel.example.com\nEASYPANEL_TOKEN=typed-easypanel-token\nAWS_ACCESS_KEY_ID=id\nAWS_SECRET_ACCESS_KEY=secret\nAWS_REGION=sa-east-1\nINTERVAL_REPORT=5m\n"
 
-		out, code := cli.RunWithInput(t, dir, "https://webhook.example.com\ntyped-token\nid\nsecret\nsa-east-1\n5m\n", "setup")
+		out, code := cli.RunWithInput(t, dir, "https://webhook.example.com\ntyped-token\nhttps://cms.example.com/api/infra-manifests/vps-01\ntyped-manifest-token\nhttp://easypanel.example.com\ntyped-easypanel-token\nid\nsecret\nsa-east-1\n5m\n", "setup")
 		content, _ := fs.ReadFile(os.DirFS(dir), ".env")
 
 		if code != 0 || !strings.Contains(out, "INFO setup status=ok") || string(content) != want {
@@ -81,13 +89,41 @@ func TestSetupCommand(t *testing.T) {
 		dir := t.TempDir()
 		writeEnvContent(t, dir, "WEBHOOK_TOKEN=token\nAWS_ACCESS_KEY_ID=id\nAWS_SECRET_ACCESS_KEY=secret\n")
 		unsetKeys(t)
-		want := "WEBHOOK_URL=\nWEBHOOK_TOKEN=\nAWS_ACCESS_KEY_ID=id\nAWS_SECRET_ACCESS_KEY=secret\nAWS_REGION=us-east-1\nINTERVAL_REPORT=10m\n"
+		want := "WEBHOOK_URL=\nWEBHOOK_TOKEN=\nMANIFEST_URL=\nMANIFEST_TOKEN=\nEASYPANEL_URL=\nEASYPANEL_TOKEN=\nAWS_ACCESS_KEY_ID=id\nAWS_SECRET_ACCESS_KEY=secret\nAWS_REGION=us-east-1\nINTERVAL_REPORT=10m\n"
 
 		out, code := cli.Run(t, dir, "setup")
 		content, _ := fs.ReadFile(os.DirFS(dir), ".env")
 
 		if code != 0 || strings.Contains(out, "WEBHOOK_TOKEN") || string(content) != want {
 			t.Errorf("exit %d, output %q, .env %q; want exit 0 without asking for WEBHOOK_TOKEN and .env %q", code, out, content, want)
+		}
+	})
+
+	t.Run("Should not ask for MANIFEST_TOKEN and the Easypanel keys when MANIFEST_URL is empty", func(t *testing.T) {
+		dir := t.TempDir()
+		writeEnvContent(t, dir, "MANIFEST_TOKEN=manifest-token\nEASYPANEL_URL=http://easypanel.example.com\nEASYPANEL_TOKEN=easypanel-token\nAWS_ACCESS_KEY_ID=id\nAWS_SECRET_ACCESS_KEY=secret\n")
+		unsetKeys(t)
+		want := "WEBHOOK_URL=\nWEBHOOK_TOKEN=\nMANIFEST_URL=\nMANIFEST_TOKEN=\nEASYPANEL_URL=\nEASYPANEL_TOKEN=\nAWS_ACCESS_KEY_ID=id\nAWS_SECRET_ACCESS_KEY=secret\nAWS_REGION=us-east-1\nINTERVAL_REPORT=10m\n"
+
+		out, code := cli.Run(t, dir, "setup")
+		content, _ := fs.ReadFile(os.DirFS(dir), ".env")
+
+		if code != 0 || strings.Contains(out, "MANIFEST_TOKEN") || strings.Contains(out, "EASYPANEL_") || string(content) != want {
+			t.Errorf("exit %d, output %q, .env %q; want exit 0 without asking for MANIFEST_TOKEN and the Easypanel keys and .env %q", code, out, content, want)
+		}
+	})
+
+	t.Run("Should fail listing EASYPANEL_TOKEN when MANIFEST_URL is set without it", func(t *testing.T) {
+		dir := t.TempDir()
+		unsetKeys(t)
+		t.Setenv("MANIFEST_URL", "https://cms.example.com/api/infra-manifests/vps-01")
+		t.Setenv("AWS_ACCESS_KEY_ID", "id")
+		t.Setenv("AWS_SECRET_ACCESS_KEY", "secret")
+
+		out, code := cli.Run(t, dir, "setup")
+
+		if code != 1 || !strings.Contains(out, `ERROR setup error="config: missing EASYPANEL_TOKEN"`) {
+			t.Errorf("exit %d, output %q; want exit 1 with missing EASYPANEL_TOKEN", code, out)
 		}
 	})
 

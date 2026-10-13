@@ -1,0 +1,7 @@
+{
+  "admin": true,
+  "createdAt": "2026-10-12T21:06:56.717Z",
+  "email": "admin@example.com",
+  "id": "scrubbed-user-id",
+  "apiToken": "scrubbed-api-token"
+}

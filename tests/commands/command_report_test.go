@@ -7,10 +7,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"io/fs"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -245,6 +247,91 @@ func startWebhookReplying(t *testing.T, status int, reply string) (string, *webh
 	t.Cleanup(server.Close)
 
 	return server.URL, received
+}
+
+type manifestRequest struct {
+	requested     bool
+	authorization string
+}
+
+func startManifest(t *testing.T, status int, body string) (string, *manifestRequest) {
+	t.Helper()
+
+	received := &manifestRequest{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		received.requested = true
+		received.authorization = r.Header.Get("Authorization")
+		w.WriteHeader(status)
+		_, _ = io.WriteString(w, body)
+	}))
+	t.Cleanup(server.Close)
+
+	return server.URL, received
+}
+
+func readTestdata(t *testing.T, name string) string {
+	t.Helper()
+
+	content, err := fs.ReadFile(os.DirFS("testdata"), name)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return string(content)
+}
+
+func startEasypanel(t *testing.T) string {
+	t.Helper()
+
+	return startEasypanelReplying(t, "", http.StatusNotFound, "")
+}
+
+func startEasypanelReplying(t *testing.T, pattern string, status int, body string) string {
+	t.Helper()
+
+	replay := replayEasypanel(os.DirFS(filepath.Join("testdata", "easypanel")), "easypanel-token")
+	mux := http.NewServeMux()
+	mux.Handle("GET /api/listProjectsAndServices", replay)
+	mux.Handle("GET /api/inspectAppService", replay)
+	mux.Handle("GET /api/inspectPostgresService", replay)
+	mux.Handle("GET /api/inspectMySQLService", replay)
+	mux.Handle("GET /api/listDomains", replay)
+	mux.Handle("GET /api/getUser", replay)
+
+	server := httptest.NewServer(replyOn(pattern, status, body, mux))
+	t.Cleanup(server.Close)
+
+	return server.URL
+}
+
+func replayEasypanel(recorded fs.FS, token string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		operation := strings.TrimPrefix(r.URL.Path, "/api/")
+		if r.Header.Get("Authorization") != "Bearer "+token {
+			refuseEasypanel(w, operation)
+			return
+		}
+
+		answer, err := fs.ReadFile(recorded, path.Join(operation, r.URL.Query().Get("projectName"), r.URL.Query().Get("serviceName"))+".json")
+		if err != nil {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = io.WriteString(w, `{"defined":false,"code":"NOT_FOUND","status":404,"message":"Service not found."}`)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(answer) //nolint:gosec // G705: the fake replays the JSON answers recorded in testdata
+	})
+}
+
+func refuseEasypanel(w http.ResponseWriter, operation string) {
+	if operation == "getUser" {
+		_, _ = io.WriteString(w, "null")
+		return
+	}
+
+	w.WriteHeader(http.StatusUnauthorized)
+	_, _ = io.WriteString(w, `{"defined":false,"code":"UNAUTHORIZED","status":401,"message":"Unauthorized"}`)
 }
 
 func TestReportCommand(t *testing.T) {
@@ -927,6 +1014,366 @@ func TestReportCommand(t *testing.T) {
 
 		if code != 1 || !strings.Contains(out, `ERROR report error="docker: invalid character 'v' looking for beginning of object key string"`) {
 			t.Errorf("exit %d, output %q; want exit 1 with invalid character 'v'", code, out)
+		}
+	})
+	t.Run("Should post the reconcile of a project as converged when Easypanel holds the schema of its client", func(t *testing.T) {
+		dir := t.TempDir()
+		webhookURL, received := startWebhook(t, http.StatusOK)
+		manifestURL, _ := startManifest(t, http.StatusOK, readTestdata(t, "manifest/converged.json"))
+		writeEnvContent(t, dir, "WEBHOOK_URL="+webhookURL+"\nMANIFEST_URL="+manifestURL+"\nEASYPANEL_URL="+startEasypanel(t)+"\nEASYPANEL_TOKEN=easypanel-token\n")
+		unsetKeys(t)
+		t.Setenv("DOCKER_SOCKET", startReportEngineReplying(t, "GET /services", http.StatusOK, `[{"ID":"s1","Spec":{"Name":"cms-heronlabs_cms-api"},"ServiceStatus":{"RunningTasks":1,"DesiredTasks":1}},{"ID":"s2","Spec":{"Name":"cms-heronlabs_cms-database"},"ServiceStatus":{"RunningTasks":1,"DesiredTasks":1}}]`))
+		t.Setenv("TALON_HOST_ROOT", newHostRoot(t))
+		wantProject := `{"name":"cms-heronlabs","reconcile":{"state":"converged","missingSecrets":[],"error":null},"services":[{"name":"cms-api","managed":true,"state":"missing","replicasRunning":1,`
+		wantDatabase := `{"name":"cms-database","managed":true,"state":"missing","replicasRunning":1,`
+		wantLastReconcile := `"outcome":"ok","error":null}`
+
+		_, code := cli.Run(t, dir, "report")
+
+		if code != 0 || !strings.Contains(string(received.body), wantProject) || !strings.Contains(string(received.body), wantDatabase) || !strings.Contains(string(received.body), wantLastReconcile) {
+			t.Errorf("exit %d, body %s; want exit 0 with %s, %s and %s", code, received.body, wantProject, wantDatabase, wantLastReconcile)
+		}
+	})
+
+	t.Run("Should post the reconcile of a project as pending when Easypanel differs from the schema of its client", func(t *testing.T) {
+		dir := t.TempDir()
+		webhookURL, received := startWebhook(t, http.StatusOK)
+		manifestURL, _ := startManifest(t, http.StatusOK, readTestdata(t, "manifest/pending.json"))
+		writeEnvContent(t, dir, "WEBHOOK_URL="+webhookURL+"\nMANIFEST_URL="+manifestURL+"\nEASYPANEL_URL="+startEasypanel(t)+"\nEASYPANEL_TOKEN=easypanel-token\n")
+		unsetKeys(t)
+		t.Setenv("DOCKER_SOCKET", startReportEngine(t))
+		t.Setenv("TALON_HOST_ROOT", newHostRoot(t))
+		wantProject := `{"name":"cms-heronlabs","reconcile":{"state":"pending","missingSecrets":[],"error":null},`
+
+		_, code := cli.Run(t, dir, "report")
+
+		if code != 0 || !strings.Contains(string(received.body), wantProject) {
+			t.Errorf("exit %d, body %s; want exit 0 with %s", code, received.body, wantProject)
+		}
+	})
+
+	t.Run("Should post the reconcile of a project as pending when its client declares a build that Easypanel does not hold", func(t *testing.T) {
+		dir := t.TempDir()
+		webhookURL, received := startWebhook(t, http.StatusOK)
+		manifestURL, _ := startManifest(t, http.StatusOK, `{"data":{"host":"vps-01","clients":[{"slug":"cms-heronlabs","lifecycle":"active","secretsRoleArn":null,"schema":{"services":[{"type":"app","data":{"projectName":"cms-heronlabs","serviceName":"cms-api","build":{"type":"dockerfile","file":"apps/server-cms/Dockerfile.production"}}}]}}]}}`)
+		writeEnvContent(t, dir, "WEBHOOK_URL="+webhookURL+"\nMANIFEST_URL="+manifestURL+"\nEASYPANEL_URL="+startEasypanel(t)+"\nEASYPANEL_TOKEN=easypanel-token\n")
+		unsetKeys(t)
+		t.Setenv("DOCKER_SOCKET", startReportEngine(t))
+		t.Setenv("TALON_HOST_ROOT", newHostRoot(t))
+		wantProject := `{"name":"cms-heronlabs","reconcile":{"state":"pending","missingSecrets":[],"error":null},`
+
+		_, code := cli.Run(t, dir, "report")
+
+		if code != 0 || !strings.Contains(string(received.body), wantProject) {
+			t.Errorf("exit %d, body %s; want exit 0 with %s", code, received.body, wantProject)
+		}
+	})
+
+	t.Run("Should post the reconcile of a project as pending when Easypanel serves only one of the declared domains", func(t *testing.T) {
+		dir := t.TempDir()
+		webhookURL, received := startWebhook(t, http.StatusOK)
+		manifestURL, _ := startManifest(t, http.StatusOK, `{"data":{"host":"vps-01","clients":[{"slug":"cms-heronlabs","lifecycle":"active","secretsRoleArn":null,"schema":{"services":[{"type":"app","data":{"projectName":"cms-heronlabs","serviceName":"cms-api","domains":[{"host":"cms-heronlabs-cms-api.example.easypanel.host","port":80},{"host":"cms.example.com","port":80}]}}]}}]}}`)
+		writeEnvContent(t, dir, "WEBHOOK_URL="+webhookURL+"\nMANIFEST_URL="+manifestURL+"\nEASYPANEL_URL="+startEasypanelReplying(t, "GET /api/listDomains", http.StatusOK, `[`+
+			`{"certificateResolver":"","destinationType":"service","host":"cms-heronlabs-cms-api.example.easypanel.host","https":true,"id":"d1","middlewares":[],"path":"/","serviceDestination":{"path":"/","port":80,"projectName":"cms-heronlabs","protocol":"http","serviceName":"cms-api"},"wildcard":false},`+
+			`{"certificateResolver":"","destinationType":"service","host":"www.example.com","https":true,"id":"d2","middlewares":[],"path":"/","serviceDestination":{"path":"/","port":80,"projectName":"cms-heronlabs","protocol":"http","serviceName":"cms-api"},"wildcard":false}`+
+			`]`)+"\nEASYPANEL_TOKEN=easypanel-token\n")
+		unsetKeys(t)
+		t.Setenv("DOCKER_SOCKET", startReportEngine(t))
+		t.Setenv("TALON_HOST_ROOT", newHostRoot(t))
+		wantProject := `{"name":"cms-heronlabs","reconcile":{"state":"pending","missingSecrets":[],"error":null},`
+
+		_, code := cli.Run(t, dir, "report")
+
+		if code != 0 || !strings.Contains(string(received.body), wantProject) {
+			t.Errorf("exit %d, body %s; want exit 0 with %s", code, received.body, wantProject)
+		}
+	})
+
+	t.Run("Should post a project that is not in the manifest as unmanaged with its services not managed", func(t *testing.T) {
+		dir := t.TempDir()
+		webhookURL, received := startWebhook(t, http.StatusOK)
+		manifestURL, _ := startManifest(t, http.StatusOK, readTestdata(t, "manifest/converged.json"))
+		writeEnvContent(t, dir, "WEBHOOK_URL="+webhookURL+"\nMANIFEST_URL="+manifestURL+"\nEASYPANEL_URL="+startEasypanel(t)+"\nEASYPANEL_TOKEN=easypanel-token\n")
+		unsetKeys(t)
+		t.Setenv("DOCKER_SOCKET", startReportEngine(t))
+		t.Setenv("TALON_HOST_ROOT", newHostRoot(t))
+		wantProject := `{"name":"shop","reconcile":{"state":"unmanaged","missingSecrets":[],"error":null},"services":[{"name":"api","managed":false,`
+
+		_, code := cli.Run(t, dir, "report")
+
+		if code != 0 || !strings.Contains(string(received.body), wantProject) {
+			t.Errorf("exit %d, body %s; want exit 0 with %s", code, received.body, wantProject)
+		}
+	})
+
+	t.Run("Should post each client without a Swarm service after the Swarm projects, with its declared services managed and missing", func(t *testing.T) {
+		dir := t.TempDir()
+		webhookURL, received := startWebhook(t, http.StatusOK)
+		manifestURL, _ := startManifest(t, http.StatusOK, readTestdata(t, "manifest/converged.json"))
+		writeEnvContent(t, dir, "WEBHOOK_URL="+webhookURL+"\nMANIFEST_URL="+manifestURL+"\nEASYPANEL_URL="+startEasypanel(t)+"\nEASYPANEL_TOKEN=easypanel-token\n")
+		unsetKeys(t)
+		t.Setenv("DOCKER_SOCKET", startReportEngine(t))
+		t.Setenv("TALON_HOST_ROOT", newHostRoot(t))
+		wantProject := `]},{"name":"cms-heronlabs","reconcile":{"state":"converged","missingSecrets":[],"error":null},"services":[` +
+			`{"name":"cms-api","managed":true,"state":"missing","replicasRunning":0,"replicasDesired":0,"recentTaskFailures":0,"memoryUsedMiB":0,"memoryLimitMiB":0,"cpuPercent":0,"cpuLimit":0,"diskGB":0,"netRxMB":0,"netTxMB":0,"blockReadMB":0,"blockWriteMB":0},` +
+			`{"name":"cms-database","managed":true,"state":"missing","replicasRunning":0,"replicasDesired":0,"recentTaskFailures":0,"memoryUsedMiB":0,"memoryLimitMiB":0,"cpuPercent":0,"cpuLimit":0,"diskGB":0,"netRxMB":0,"netTxMB":0,"blockReadMB":0,"blockWriteMB":0}]}]`
+
+		_, code := cli.Run(t, dir, "report")
+
+		if code != 0 || !strings.Contains(string(received.body), wantProject) {
+			t.Errorf("exit %d, body %s; want exit 0 with %s", code, received.body, wantProject)
+		}
+	})
+
+	t.Run("Should send MANIFEST_TOKEN to the manifest as Authorization: Bearer", func(t *testing.T) {
+		dir := t.TempDir()
+		manifestURL, manifest := startManifest(t, http.StatusOK, readTestdata(t, "manifest/converged.json"))
+		writeEnvContent(t, dir, "MANIFEST_URL="+manifestURL+"\nMANIFEST_TOKEN=manifest-token\nEASYPANEL_URL="+startEasypanel(t)+"\nEASYPANEL_TOKEN=easypanel-token\n")
+		unsetKeys(t)
+		t.Setenv("DOCKER_SOCKET", startReportEngine(t))
+		t.Setenv("TALON_HOST_ROOT", newHostRoot(t))
+
+		_, code := cli.Run(t, dir, "report")
+
+		if code != 0 || manifest.authorization != "Bearer manifest-token" {
+			t.Errorf("exit %d, Authorization %q; want exit 0 with %q", code, manifest.authorization, "Bearer manifest-token")
+		}
+	})
+
+	t.Run("Should not read the manifest and post every reconcile and lastReconcile null without MANIFEST_URL", func(t *testing.T) {
+		dir := t.TempDir()
+		webhookURL, received := startWebhook(t, http.StatusOK)
+		_, manifest := startManifest(t, http.StatusOK, readTestdata(t, "manifest/converged.json"))
+		writeEnvContent(t, dir, "WEBHOOK_URL="+webhookURL+"\nEASYPANEL_URL="+startEasypanel(t)+"\nEASYPANEL_TOKEN=easypanel-token\n")
+		unsetKeys(t)
+		t.Setenv("DOCKER_SOCKET", startReportEngine(t))
+		t.Setenv("TALON_HOST_ROOT", newHostRoot(t))
+		wantProjects := `"projects":[{"name":"shop","reconcile":null,"services":[{"name":"api","managed":false,`
+		wantLastReconcile := `"lastReconcile":null`
+
+		_, code := cli.Run(t, dir, "report")
+
+		if code != 0 || manifest.requested || !strings.Contains(string(received.body), wantProjects) || !strings.Contains(string(received.body), wantLastReconcile) {
+			t.Errorf("exit %d, manifest requested %v, body %s; want exit 0 without the manifest and with %s and %s", code, manifest.requested, received.body, wantProjects, wantLastReconcile)
+		}
+	})
+
+	t.Run("Should post the report with lastReconcile failed and every reconcile null when the manifest answers 500", func(t *testing.T) {
+		dir := t.TempDir()
+		webhookURL, received := startWebhook(t, http.StatusOK)
+		manifestURL, _ := startManifest(t, http.StatusInternalServerError, `{"data":null,"error":{"status":500,"message":"infra-manifest-failed"}}`)
+		writeEnvContent(t, dir, "WEBHOOK_URL="+webhookURL+"\nMANIFEST_URL="+manifestURL+"\nEASYPANEL_URL="+startEasypanel(t)+"\nEASYPANEL_TOKEN=easypanel-token\n")
+		unsetKeys(t)
+		t.Setenv("DOCKER_SOCKET", startReportEngine(t))
+		t.Setenv("TALON_HOST_ROOT", newHostRoot(t))
+		wantProjects := `"projects":[{"name":"shop","reconcile":null,"services":[{"name":"api","managed":false,`
+		wantLastReconcile := `"outcome":"failed","error":"manifest: unexpected status: 500"}`
+
+		out, code := cli.Run(t, dir, "report")
+
+		if code != 0 || !strings.Contains(out, "INFO report status=ok") || !strings.Contains(string(received.body), wantProjects) || !strings.Contains(string(received.body), wantLastReconcile) {
+			t.Errorf("exit %d, output %q, body %s; want exit 0 with status=ok, %s and %s", code, out, received.body, wantProjects, wantLastReconcile)
+		}
+	})
+
+	t.Run("Should post the report with lastReconcile failed when MANIFEST_URL is not a URL", func(t *testing.T) {
+		dir := t.TempDir()
+		webhookURL, received := startWebhook(t, http.StatusOK)
+		writeEnvContent(t, dir, "WEBHOOK_URL="+webhookURL+"\nMANIFEST_URL=://cms.example.com\nEASYPANEL_URL="+startEasypanel(t)+"\nEASYPANEL_TOKEN=easypanel-token\n")
+		unsetKeys(t)
+		t.Setenv("DOCKER_SOCKET", startReportEngine(t))
+		t.Setenv("TALON_HOST_ROOT", newHostRoot(t))
+		wantLastReconcile := `"outcome":"failed","error":"manifest: parse \"://cms.example.com\": missing protocol scheme"}`
+
+		_, code := cli.Run(t, dir, "report")
+
+		if code != 0 || !strings.Contains(string(received.body), wantLastReconcile) {
+			t.Errorf("exit %d, body %s; want exit 0 with %s", code, received.body, wantLastReconcile)
+		}
+	})
+
+	t.Run("Should post the report with lastReconcile failed when the manifest cannot be reached", func(t *testing.T) {
+		dir := t.TempDir()
+		webhookURL, received := startWebhook(t, http.StatusOK)
+		writeEnvContent(t, dir, "WEBHOOK_URL="+webhookURL+"\nMANIFEST_URL="+closedWebhookURL(t)+"\nEASYPANEL_URL="+startEasypanel(t)+"\nEASYPANEL_TOKEN=easypanel-token\n")
+		unsetKeys(t)
+		t.Setenv("DOCKER_SOCKET", startReportEngine(t))
+		t.Setenv("TALON_HOST_ROOT", newHostRoot(t))
+
+		_, code := cli.Run(t, dir, "report")
+
+		if code != 0 || !strings.Contains(string(received.body), `"outcome":"failed","error":"manifest: Get `) || !strings.Contains(string(received.body), "connection refused") {
+			t.Errorf("exit %d, body %s; want exit 0 with lastReconcile failed on connection refused", code, received.body)
+		}
+	})
+
+	t.Run("Should post the report with lastReconcile failed when the manifest is not JSON", func(t *testing.T) {
+		dir := t.TempDir()
+		webhookURL, received := startWebhook(t, http.StatusOK)
+		manifestURL, _ := startManifest(t, http.StatusOK, "manifest")
+		writeEnvContent(t, dir, "WEBHOOK_URL="+webhookURL+"\nMANIFEST_URL="+manifestURL+"\nEASYPANEL_URL="+startEasypanel(t)+"\nEASYPANEL_TOKEN=easypanel-token\n")
+		unsetKeys(t)
+		t.Setenv("DOCKER_SOCKET", startReportEngine(t))
+		t.Setenv("TALON_HOST_ROOT", newHostRoot(t))
+		wantLastReconcile := `"outcome":"failed","error":"manifest: invalid character 'm' looking for beginning of value"}`
+
+		_, code := cli.Run(t, dir, "report")
+
+		if code != 0 || !strings.Contains(string(received.body), wantLastReconcile) {
+			t.Errorf("exit %d, body %s; want exit 0 with %s", code, received.body, wantLastReconcile)
+		}
+	})
+
+	t.Run("Should post the clients of the manifest with every reconcile null and lastReconcile failed when Easypanel refuses EASYPANEL_TOKEN", func(t *testing.T) {
+		dir := t.TempDir()
+		webhookURL, received := startWebhook(t, http.StatusOK)
+		manifestURL, _ := startManifest(t, http.StatusOK, readTestdata(t, "manifest/converged.json"))
+		writeEnvContent(t, dir, "WEBHOOK_URL="+webhookURL+"\nMANIFEST_URL="+manifestURL+"\nEASYPANEL_URL="+startEasypanel(t)+"\nEASYPANEL_TOKEN=wrong\n")
+		unsetKeys(t)
+		t.Setenv("DOCKER_SOCKET", startReportEngine(t))
+		t.Setenv("TALON_HOST_ROOT", newHostRoot(t))
+		wantProject := `{"name":"cms-heronlabs","reconcile":null,"services":[{"name":"cms-api","managed":true,"state":"missing",`
+		wantLastReconcile := `"outcome":"failed","error":"easypanel: listProjectsAndServices: unexpected status: 401"}`
+
+		out, code := cli.Run(t, dir, "report")
+
+		if code != 0 || !strings.Contains(out, "INFO report status=ok") || !strings.Contains(string(received.body), wantProject) || !strings.Contains(string(received.body), wantLastReconcile) {
+			t.Errorf("exit %d, output %q, body %s; want exit 0 with status=ok, %s and %s", code, out, received.body, wantProject, wantLastReconcile)
+		}
+	})
+
+	t.Run("Should post the report with lastReconcile failed when EASYPANEL_URL is not a URL", func(t *testing.T) {
+		dir := t.TempDir()
+		webhookURL, received := startWebhook(t, http.StatusOK)
+		manifestURL, _ := startManifest(t, http.StatusOK, readTestdata(t, "manifest/converged.json"))
+		writeEnvContent(t, dir, "WEBHOOK_URL="+webhookURL+"\nMANIFEST_URL="+manifestURL+"\nEASYPANEL_URL=://easypanel.example.com\nEASYPANEL_TOKEN=easypanel-token\n")
+		unsetKeys(t)
+		t.Setenv("DOCKER_SOCKET", startReportEngine(t))
+		t.Setenv("TALON_HOST_ROOT", newHostRoot(t))
+		wantLastReconcile := `"outcome":"failed","error":"easypanel: listProjectsAndServices: parse \"://easypanel.example.com\": missing protocol scheme"}`
+
+		_, code := cli.Run(t, dir, "report")
+
+		if code != 0 || !strings.Contains(string(received.body), wantLastReconcile) {
+			t.Errorf("exit %d, body %s; want exit 0 with %s", code, received.body, wantLastReconcile)
+		}
+	})
+
+	t.Run("Should post the report with lastReconcile failed when Easypanel cannot be reached", func(t *testing.T) {
+		dir := t.TempDir()
+		webhookURL, received := startWebhook(t, http.StatusOK)
+		manifestURL, _ := startManifest(t, http.StatusOK, readTestdata(t, "manifest/converged.json"))
+		writeEnvContent(t, dir, "WEBHOOK_URL="+webhookURL+"\nMANIFEST_URL="+manifestURL+"\nEASYPANEL_URL="+closedWebhookURL(t)+"\nEASYPANEL_TOKEN=easypanel-token\n")
+		unsetKeys(t)
+		t.Setenv("DOCKER_SOCKET", startReportEngine(t))
+		t.Setenv("TALON_HOST_ROOT", newHostRoot(t))
+
+		_, code := cli.Run(t, dir, "report")
+
+		if code != 0 || !strings.Contains(string(received.body), `"outcome":"failed","error":"easypanel: listProjectsAndServices: Get `) || !strings.Contains(string(received.body), "connection refused") {
+			t.Errorf("exit %d, body %s; want exit 0 with lastReconcile failed on connection refused", code, received.body)
+		}
+	})
+
+	t.Run("Should post the report with lastReconcile failed when Easypanel answers something other than JSON", func(t *testing.T) {
+		dir := t.TempDir()
+		webhookURL, received := startWebhook(t, http.StatusOK)
+		manifestURL, _ := startManifest(t, http.StatusOK, readTestdata(t, "manifest/converged.json"))
+		writeEnvContent(t, dir, "WEBHOOK_URL="+webhookURL+"\nMANIFEST_URL="+manifestURL+"\nEASYPANEL_URL="+startEasypanelReplying(t, "GET /api/listProjectsAndServices", http.StatusOK, "projects")+"\nEASYPANEL_TOKEN=easypanel-token\n")
+		unsetKeys(t)
+		t.Setenv("DOCKER_SOCKET", startReportEngine(t))
+		t.Setenv("TALON_HOST_ROOT", newHostRoot(t))
+		wantLastReconcile := `"outcome":"failed","error":"easypanel: listProjectsAndServices: invalid character 'p' looking for beginning of value"}`
+
+		_, code := cli.Run(t, dir, "report")
+
+		if code != 0 || !strings.Contains(string(received.body), wantLastReconcile) {
+			t.Errorf("exit %d, body %s; want exit 0 with %s", code, received.body, wantLastReconcile)
+		}
+	})
+
+	t.Run("Should post the report with lastReconcile failed when Easypanel fails to inspect an app", func(t *testing.T) {
+		dir := t.TempDir()
+		webhookURL, received := startWebhook(t, http.StatusOK)
+		manifestURL, _ := startManifest(t, http.StatusOK, readTestdata(t, "manifest/converged.json"))
+		writeEnvContent(t, dir, "WEBHOOK_URL="+webhookURL+"\nMANIFEST_URL="+manifestURL+"\nEASYPANEL_URL="+startEasypanelReplying(t, "GET /api/inspectAppService", http.StatusInternalServerError, "")+"\nEASYPANEL_TOKEN=easypanel-token\n")
+		unsetKeys(t)
+		t.Setenv("DOCKER_SOCKET", startReportEngine(t))
+		t.Setenv("TALON_HOST_ROOT", newHostRoot(t))
+		wantLastReconcile := `"outcome":"failed","error":"easypanel: inspectAppService: unexpected status: 500"}`
+
+		_, code := cli.Run(t, dir, "report")
+
+		if code != 0 || !strings.Contains(string(received.body), wantLastReconcile) {
+			t.Errorf("exit %d, body %s; want exit 0 with %s", code, received.body, wantLastReconcile)
+		}
+	})
+
+	t.Run("Should post the report with lastReconcile failed when Easypanel fails to list the domains of an app", func(t *testing.T) {
+		dir := t.TempDir()
+		webhookURL, received := startWebhook(t, http.StatusOK)
+		manifestURL, _ := startManifest(t, http.StatusOK, readTestdata(t, "manifest/converged.json"))
+		writeEnvContent(t, dir, "WEBHOOK_URL="+webhookURL+"\nMANIFEST_URL="+manifestURL+"\nEASYPANEL_URL="+startEasypanelReplying(t, "GET /api/listDomains", http.StatusInternalServerError, "")+"\nEASYPANEL_TOKEN=easypanel-token\n")
+		unsetKeys(t)
+		t.Setenv("DOCKER_SOCKET", startReportEngine(t))
+		t.Setenv("TALON_HOST_ROOT", newHostRoot(t))
+		wantLastReconcile := `"outcome":"failed","error":"easypanel: listDomains: unexpected status: 500"}`
+
+		_, code := cli.Run(t, dir, "report")
+
+		if code != 0 || !strings.Contains(string(received.body), wantLastReconcile) {
+			t.Errorf("exit %d, body %s; want exit 0 with %s", code, received.body, wantLastReconcile)
+		}
+	})
+
+	t.Run("Should post the report with lastReconcile failed when Easypanel fails to inspect a postgres service", func(t *testing.T) {
+		dir := t.TempDir()
+		webhookURL, received := startWebhook(t, http.StatusOK)
+		manifestURL, _ := startManifest(t, http.StatusOK, readTestdata(t, "manifest/converged.json"))
+		writeEnvContent(t, dir, "WEBHOOK_URL="+webhookURL+"\nMANIFEST_URL="+manifestURL+"\nEASYPANEL_URL="+startEasypanelReplying(t, "GET /api/inspectPostgresService", http.StatusInternalServerError, "")+"\nEASYPANEL_TOKEN=easypanel-token\n")
+		unsetKeys(t)
+		t.Setenv("DOCKER_SOCKET", startReportEngine(t))
+		t.Setenv("TALON_HOST_ROOT", newHostRoot(t))
+		wantLastReconcile := `"outcome":"failed","error":"easypanel: inspectPostgresService: unexpected status: 500"}`
+
+		_, code := cli.Run(t, dir, "report")
+
+		if code != 0 || !strings.Contains(string(received.body), wantLastReconcile) {
+			t.Errorf("exit %d, body %s; want exit 0 with %s", code, received.body, wantLastReconcile)
+		}
+	})
+
+	t.Run("Should post the reconcile of a mysql service read with inspectMySQLService, leaving out the services of other types", func(t *testing.T) {
+		dir := t.TempDir()
+		webhookURL, received := startWebhook(t, http.StatusOK)
+		manifestURL, _ := startManifest(t, http.StatusOK, `{"data":{"host":"vps-01","clients":[{"slug":"cms-heronlabs","lifecycle":"active","secretsRoleArn":null,"schema":{"services":[{"type":"mysql","data":{"projectName":"cms-heronlabs","serviceName":"cms-mysql","image":"mysql:9","databaseName":"cms-heronlabs","user":"mysql","exposedPort":0,"resources":{"cpuLimit":0.5,"cpuReservation":0.1,"memoryLimit":512,"memoryReservation":128}}}]}}]}}`)
+		writeEnvContent(t, dir, "WEBHOOK_URL="+webhookURL+"\nMANIFEST_URL="+manifestURL+"\nEASYPANEL_URL="+startEasypanelReplying(t, "GET /api/listProjectsAndServices", http.StatusOK, `{"projects":[{"name":"cms-heronlabs"}],"services":[{"name":"cms-mysql","projectName":"cms-heronlabs","type":"mysql"},{"name":"cms-cache","projectName":"cms-heronlabs","type":"redis"}]}`)+"\nEASYPANEL_TOKEN=easypanel-token\n")
+		unsetKeys(t)
+		t.Setenv("DOCKER_SOCKET", startReportEngine(t))
+		t.Setenv("TALON_HOST_ROOT", newHostRoot(t))
+		wantProject := `{"name":"cms-heronlabs","reconcile":{"state":"converged","missingSecrets":[],"error":null},"services":[{"name":"cms-mysql","managed":true,"state":"missing",`
+
+		_, code := cli.Run(t, dir, "report")
+
+		if code != 0 || !strings.Contains(string(received.body), wantProject) {
+			t.Errorf("exit %d, body %s; want exit 0 with %s", code, received.body, wantProject)
+		}
+	})
+
+	t.Run("Should post the report with lastReconcile failed when Easypanel fails to inspect a mysql service", func(t *testing.T) {
+		dir := t.TempDir()
+		webhookURL, received := startWebhook(t, http.StatusOK)
+		manifestURL, _ := startManifest(t, http.StatusOK, readTestdata(t, "manifest/converged.json"))
+		writeEnvContent(t, dir, "WEBHOOK_URL="+webhookURL+"\nMANIFEST_URL="+manifestURL+"\nEASYPANEL_URL="+startEasypanelReplying(t, "GET /api/listProjectsAndServices", http.StatusOK, `{"services":[{"name":"cms-replica","projectName":"cms-heronlabs","type":"mysql"}]}`)+"\nEASYPANEL_TOKEN=easypanel-token\n")
+		unsetKeys(t)
+		t.Setenv("DOCKER_SOCKET", startReportEngine(t))
+		t.Setenv("TALON_HOST_ROOT", newHostRoot(t))
+		wantLastReconcile := `"outcome":"failed","error":"easypanel: inspectMySQLService: unexpected status: 404"}`
+
+		_, code := cli.Run(t, dir, "report")
+
+		if code != 0 || !strings.Contains(string(received.body), wantLastReconcile) {
+			t.Errorf("exit %d, body %s; want exit 0 with %s", code, received.body, wantLastReconcile)
 		}
 	})
 }
