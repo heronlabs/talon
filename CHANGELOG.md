@@ -1,3 +1,9 @@
+## v0.10.0 (2026-10-13)
+
+### Features
+
+* feat: observe Easypanel against the CMS manifest and report reconcile (#21) (c20ebb144c0fd12dbd97be45686e515870426e7f)
+
 ## v0.9.2 (2026-10-13)
 
 ### Documentation
