@@ -1,3 +1,9 @@
+## v0.9.2 (2026-10-13)
+
+### Documentation
+
+* docs: add the MIT license (#20) (0f629a9501cf6c9a5d05e62734942579deb7b07e)
+
 ## v0.9.1 (2026-10-13)
 
 ### Bug Fixes
