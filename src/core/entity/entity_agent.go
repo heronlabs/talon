@@ -7,7 +7,7 @@ import (
 )
 
 // supportedEasypanelVersions are the versions of Easypanel that talon supports.
-var supportedEasypanelVersions = []string{"2.36.0"}
+var supportedEasypanelVersions = []string{"2.36.0", "2.37.0"}
 
 // Agent holds the version of talon, the Easypanel version and whether talon supports it, and the last reconcile.
 type Agent struct {
