@@ -1,3 +1,9 @@
+## v0.11.0 (2026-10-14)
+
+### Features
+
+* feat: support Easypanel 2.37.0 (#22) (7899df958ae445acbe42c5b2fdb09f8e44ec38f2)
+
 ## v0.10.0 (2026-10-13)
 
 ### Features
