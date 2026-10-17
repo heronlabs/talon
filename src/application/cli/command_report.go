@@ -1,16 +1,16 @@
-package application
+package cli
 
 import (
 	"context"
 	"encoding/json"
 	"log/slog"
 
-	"github.com/heronlabs/talon/src/core/entity"
+	"github.com/heronlabs/talon/src/core/domain"
 )
 
 // Report sends the report of the host and returns it.
 type Report interface {
-	Send(ctx context.Context) (*entity.Report, error)
+	Send(ctx context.Context) (*domain.Report, error)
 }
 
 // ReportCommand runs talon report.

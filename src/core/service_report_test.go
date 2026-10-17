@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/heronlabs/talon/src/core/entity"
+	"github.com/heronlabs/talon/src/core/domain"
 	"github.com/heronlabs/talon/src/infrastructure/docker"
 	"github.com/heronlabs/talon/src/infrastructure/easypanel"
 	"github.com/heronlabs/talon/src/infrastructure/host"
@@ -100,11 +100,11 @@ type fakeReportSender struct {
 	ctx      context.Context
 	endpoint string
 	token    string
-	sent     *entity.Report
+	sent     *domain.Report
 	err      error
 }
 
-func (f *fakeReportSender) Send(ctx context.Context, endpoint, token string, report *entity.Report) (*webhook.ReportResponse, error) {
+func (f *fakeReportSender) Send(ctx context.Context, endpoint, token string, report *domain.Report) (*webhook.ReportResponse, error) {
 	f.ctx = ctx
 	f.endpoint = endpoint
 	f.token = token
@@ -193,7 +193,7 @@ func TestReportService(t *testing.T) {
 		easypanelCollector := &fakeEasypanelCollector{snapshot: easypanel.Snapshot{Sizes: map[string]map[string]int64{"shop": {"api": 1500000000}}}}
 		sender := &fakeReportSender{}
 		service := NewReportService(dockerCollector, &fakeHostCollector{}, easypanelCollector, &fakeManifestReader{}, &fakeEasypanelConfigCollector{}, sender, config, "1.2.3", hostname, time.Now)
-		want := []entity.Project{{Name: "shop", Services: []entity.Service{{Name: "api", State: "missing", DiskGB: 1.5}}}}
+		want := []domain.Project{{Name: "shop", Services: []domain.Service{{Name: "api", State: "missing", DiskGB: 1.5}}}}
 
 		_, _ = service.Send(t.Context())
 
@@ -519,8 +519,8 @@ func TestReportService(t *testing.T) {
 		declared.Data.Clients = []manifest.Client{{Slug: "shop"}}
 		sender := &fakeReportSender{}
 		service := NewReportService(&fakeDockerCollector{}, &fakeHostCollector{}, &fakeEasypanelCollector{}, &fakeManifestReader{manifest: declared}, &fakeEasypanelConfigCollector{snapshot: &easypanel.ConfigSnapshot{}}, sender, config, "1.2.3", hostname, now)
-		wantProjects := []entity.Project{{Name: "shop", Reconcile: &entity.Reconcile{State: "pending", MissingSecrets: []string{}}, Services: []entity.Service{}}}
-		wantLastReconcile := &entity.LastReconcile{At: "2026-10-08T12:30:15Z", Outcome: "ok"}
+		wantProjects := []domain.Project{{Name: "shop", Reconcile: &domain.Reconcile{State: "pending", MissingSecrets: []string{}}, Services: []domain.Service{}}}
+		wantLastReconcile := &domain.LastReconcile{At: "2026-10-08T12:30:15Z", Outcome: "ok"}
 
 		_, _ = service.Send(t.Context())
 
@@ -536,7 +536,7 @@ func TestReportService(t *testing.T) {
 		sender := &fakeReportSender{}
 		service := NewReportService(&fakeDockerCollector{}, &fakeHostCollector{}, &fakeEasypanelCollector{}, &fakeManifestReader{err: errors.New("read failed")}, &fakeEasypanelConfigCollector{}, sender, config, "1.2.3", hostname, now)
 		message := "manifest: read failed"
-		want := &entity.LastReconcile{At: "2026-10-08T12:30:15Z", Outcome: "failed", Error: &message}
+		want := &domain.LastReconcile{At: "2026-10-08T12:30:15Z", Outcome: "failed", Error: &message}
 
 		_, _ = service.Send(t.Context())
 
@@ -567,8 +567,8 @@ func TestReportService(t *testing.T) {
 		sender := &fakeReportSender{}
 		service := NewReportService(&fakeDockerCollector{}, &fakeHostCollector{}, &fakeEasypanelCollector{}, &fakeManifestReader{manifest: declared}, &fakeEasypanelConfigCollector{err: errors.New("collect failed")}, sender, config, "1.2.3", hostname, now)
 		message := "easypanel: collect failed"
-		wantProjects := []entity.Project{{Name: "shop", Services: []entity.Service{}}}
-		wantLastReconcile := &entity.LastReconcile{At: "2026-10-08T12:30:15Z", Outcome: "failed", Error: &message}
+		wantProjects := []domain.Project{{Name: "shop", Services: []domain.Service{}}}
+		wantLastReconcile := &domain.LastReconcile{At: "2026-10-08T12:30:15Z", Outcome: "failed", Error: &message}
 
 		_, _ = service.Send(t.Context())
 

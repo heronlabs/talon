@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/heronlabs/talon/src/core/entity"
+	"github.com/heronlabs/talon/src/core/domain"
 	"github.com/heronlabs/talon/src/infrastructure/docker"
 	"github.com/heronlabs/talon/src/infrastructure/easypanel"
 	"github.com/heronlabs/talon/src/infrastructure/host"
@@ -49,7 +49,7 @@ type EasypanelCollector interface {
 
 // ReportSender sends the report to the webhook at endpoint, with its token, and returns the reply.
 type ReportSender interface {
-	Send(ctx context.Context, endpoint, token string, report *entity.Report) (*webhook.ReportResponse, error)
+	Send(ctx context.Context, endpoint, token string, report *domain.Report) (*webhook.ReportResponse, error)
 }
 
 // ManifestReader reads the manifest of the host at endpoint, with its token.
@@ -82,7 +82,7 @@ func NewReportService(dockerCollector DockerCollector, hostCollector HostCollect
 }
 
 // Send builds the report, sends it to WEBHOOK_URL with WEBHOOK_TOKEN and returns it, talking to the Docker Engine, the manifest, Easypanel and the webhook with ctx; without WEBHOOK_URL it builds it, sends nothing and returns it.
-func (s *ReportService) Send(ctx context.Context) (*entity.Report, error) {
+func (s *ReportService) Send(ctx context.Context) (*domain.Report, error) {
 	config, err := s.readConfig()
 	if err != nil {
 		return nil, err
@@ -115,7 +115,7 @@ func (s *ReportService) readConfig() (map[string]string, error) {
 }
 
 // collect returns the report built, in order, from the hostname, the snapshot of the Docker Engine requested with ctx, the snapshot of the metrics of the host, the snapshot of the Easypanel directories and the observation of the manifest and Easypanel of config, with the time from the clock and the version of talon; a failing observation does not fail it.
-func (s *ReportService) collect(ctx context.Context, config map[string]string) (*entity.Report, error) {
+func (s *ReportService) collect(ctx context.Context, config map[string]string) (*domain.Report, error) {
 	hostname, err := s.hostname()
 	if err != nil {
 		return nil, fmt.Errorf("host: %w", err)
@@ -138,7 +138,7 @@ func (s *ReportService) collect(ctx context.Context, config map[string]string) (
 
 	declared, configured, observeErr := s.observe(ctx, config)
 
-	return entity.NewReport(hostname, s.now(), s.version, *snapshot, *hostSnapshot, *easypanelSnapshot, declared, configured, observeErr), nil
+	return domain.NewReport(hostname, s.now(), s.version, *snapshot, *hostSnapshot, *easypanelSnapshot, declared, configured, observeErr), nil
 }
 
 // observe reads, with ctx, the manifest at MANIFEST_URL with MANIFEST_TOKEN and then the configuration of the Easypanel API at EASYPANEL_URL with EASYPANEL_TOKEN, and returns them; it reads nothing without MANIFEST_URL, nothing from Easypanel when the manifest fails, and returns the error of the read that failed, with the manifest when Easypanel failed.

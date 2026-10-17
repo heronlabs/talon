@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/heronlabs/talon/src/core/entity"
+	"github.com/heronlabs/talon/src/core/domain"
 )
 
 type webhookRequest struct {
@@ -45,10 +45,10 @@ func TestReportSenderService(t *testing.T) {
 	t.Run("Should post the report as JSON to the endpoint", func(t *testing.T) {
 		webhookURL, received := startWebhook(t, http.StatusOK, `{"data":{}}`)
 		service := NewReportSenderService(NewHTTPClient(time.Second))
-		report := &entity.Report{Host: "vps-01", MeasuredAt: "2026-10-08T12:30:15.123456789Z", Agent: entity.Agent{Version: "1.2.3"}, Projects: []entity.Project{}}
+		report := &domain.Report{Host: "vps-01", MeasuredAt: "2026-10-08T12:30:15.123456789Z", Agent: domain.Agent{Version: "1.2.3"}, Projects: []domain.Project{}}
 
 		_, _ = service.Send(t.Context(), webhookURL+"/reports", "", report)
-		var decoded entity.Report
+		var decoded domain.Report
 		_ = json.Unmarshal(received.body, &decoded)
 
 		if received.method != http.MethodPost || received.path != "/reports" || !reflect.DeepEqual(decoded, *report) {
@@ -60,7 +60,7 @@ func TestReportSenderService(t *testing.T) {
 		webhookURL, received := startWebhook(t, http.StatusOK, `{"data":{}}`)
 		service := NewReportSenderService(NewHTTPClient(time.Second))
 
-		_, _ = service.Send(t.Context(), webhookURL, "", &entity.Report{})
+		_, _ = service.Send(t.Context(), webhookURL, "", &domain.Report{})
 
 		if received.header.Get("Content-Type") != "application/json" {
 			t.Errorf("Send() sent Content-Type %q, want %q", received.header.Get("Content-Type"), "application/json")
@@ -71,7 +71,7 @@ func TestReportSenderService(t *testing.T) {
 		webhookURL, received := startWebhook(t, http.StatusOK, `{"data":{}}`)
 		service := NewReportSenderService(NewHTTPClient(time.Second))
 
-		_, _ = service.Send(t.Context(), webhookURL, "token", &entity.Report{})
+		_, _ = service.Send(t.Context(), webhookURL, "token", &domain.Report{})
 
 		if received.header.Get("Authorization") != "Bearer token" {
 			t.Errorf("Send() sent Authorization %q, want %q", received.header.Get("Authorization"), "Bearer token")
@@ -82,7 +82,7 @@ func TestReportSenderService(t *testing.T) {
 		webhookURL, received := startWebhook(t, http.StatusOK, `{"data":{}}`)
 		service := NewReportSenderService(NewHTTPClient(time.Second))
 
-		_, _ = service.Send(t.Context(), webhookURL, "", &entity.Report{})
+		_, _ = service.Send(t.Context(), webhookURL, "", &domain.Report{})
 
 		if received.header == nil || received.header.Values("Authorization") != nil {
 			t.Errorf("Send() sent headers %v, want a request without Authorization", received.header)
@@ -99,7 +99,7 @@ func TestReportSenderService(t *testing.T) {
 		want.Data.Matched = []string{"shop"}
 		want.Data.Unmatched = []string{"blog"}
 
-		response, _ := service.Send(t.Context(), webhookURL, "", &entity.Report{})
+		response, _ := service.Send(t.Context(), webhookURL, "", &domain.Report{})
 
 		if response == nil || !reflect.DeepEqual(*response, want) {
 			t.Errorf("Send() = %+v, want %+v", response, want)
@@ -110,7 +110,7 @@ func TestReportSenderService(t *testing.T) {
 		webhookURL, _ := startWebhook(t, http.StatusAccepted, `{"data":{}}`)
 		service := NewReportSenderService(NewHTTPClient(time.Second))
 
-		_, err := service.Send(t.Context(), webhookURL, "", &entity.Report{})
+		_, err := service.Send(t.Context(), webhookURL, "", &domain.Report{})
 
 		if err != nil {
 			t.Errorf("Send() = %v, want nil", err)
@@ -121,7 +121,7 @@ func TestReportSenderService(t *testing.T) {
 		webhookURL, _ := startWebhook(t, http.StatusUnauthorized, `{"error":"unauthorized"}`)
 		service := NewReportSenderService(NewHTTPClient(time.Second))
 
-		_, err := service.Send(t.Context(), webhookURL, "wrong", &entity.Report{})
+		_, err := service.Send(t.Context(), webhookURL, "wrong", &domain.Report{})
 
 		if !errors.Is(err, ErrUnexpectedStatus) {
 			t.Errorf("Send() = %v, want %v", err, ErrUnexpectedStatus)
@@ -132,7 +132,7 @@ func TestReportSenderService(t *testing.T) {
 		webhookURL, _ := startWebhook(t, http.StatusMultipleChoices, `{"data":{}}`)
 		service := NewReportSenderService(NewHTTPClient(time.Second))
 
-		_, err := service.Send(t.Context(), webhookURL, "", &entity.Report{})
+		_, err := service.Send(t.Context(), webhookURL, "", &domain.Report{})
 
 		if !errors.Is(err, ErrUnexpectedStatus) {
 			t.Errorf("Send() = %v, want %v", err, ErrUnexpectedStatus)
@@ -144,7 +144,7 @@ func TestReportSenderService(t *testing.T) {
 		service := NewReportSenderService(NewHTTPClient(time.Second))
 		var syntaxError *json.SyntaxError
 
-		_, err := service.Send(t.Context(), webhookURL, "", &entity.Report{})
+		_, err := service.Send(t.Context(), webhookURL, "", &domain.Report{})
 
 		if !errors.As(err, &syntaxError) {
 			t.Errorf("Send() = %v, want a %T", err, syntaxError)
@@ -156,7 +156,7 @@ func TestReportSenderService(t *testing.T) {
 		server.Close()
 		service := NewReportSenderService(NewHTTPClient(time.Second))
 
-		_, err := service.Send(t.Context(), server.URL, "", &entity.Report{})
+		_, err := service.Send(t.Context(), server.URL, "", &domain.Report{})
 
 		if !errors.Is(err, syscall.ECONNREFUSED) {
 			t.Errorf("Send() = %v, want %v", err, syscall.ECONNREFUSED)
@@ -169,7 +169,7 @@ func TestReportSenderService(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
 
-		_, err := service.Send(ctx, webhookURL, "", &entity.Report{})
+		_, err := service.Send(ctx, webhookURL, "", &domain.Report{})
 
 		if !errors.Is(err, context.Canceled) {
 			t.Errorf("Send() = %v, want %v", err, context.Canceled)
@@ -180,7 +180,7 @@ func TestReportSenderService(t *testing.T) {
 		service := NewReportSenderService(NewHTTPClient(time.Second))
 		var urlError *url.Error
 
-		_, err := service.Send(t.Context(), "://webhook.example.com", "", &entity.Report{})
+		_, err := service.Send(t.Context(), "://webhook.example.com", "", &domain.Report{})
 
 		if !errors.As(err, &urlError) || urlError.Op != "parse" {
 			t.Errorf("Send() = %v, want a %T from parse", err, urlError)
@@ -190,7 +190,7 @@ func TestReportSenderService(t *testing.T) {
 		service := NewReportSenderService(NewHTTPClient(time.Second))
 		var unsupportedValueError *json.UnsupportedValueError
 
-		_, err := service.Send(t.Context(), "https://webhook.example.com", "", &entity.Report{System: entity.System{Load1: math.NaN()}})
+		_, err := service.Send(t.Context(), "https://webhook.example.com", "", &domain.Report{System: domain.System{Load1: math.NaN()}})
 
 		if !errors.As(err, &unsupportedValueError) {
 			t.Errorf("Send() = %v, want a %T", err, unsupportedValueError)
