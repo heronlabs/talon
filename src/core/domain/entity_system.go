@@ -1,4 +1,4 @@
-package entity
+package domain
 
 import (
 	"github.com/heronlabs/talon/src/infrastructure/docker"

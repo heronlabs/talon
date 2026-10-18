@@ -8,7 +8,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/heronlabs/talon/src/application"
+	"github.com/heronlabs/talon/src/application/cli"
 	"github.com/heronlabs/talon/src/core"
 	"github.com/heronlabs/talon/src/infrastructure/docker"
 	"github.com/heronlabs/talon/src/infrastructure/easypanel"
@@ -74,11 +74,11 @@ func main() {
 	coreReportService := core.NewReportService(dockerReportCollectorService, hostReportCollectorService, easypanelReportCollectorService, manifestReaderService, easypanelConfigCollectorService, webhookReportSenderService, environmentConfigReaderService, version, os.Hostname, time.Now)
 	coreScheduleService := core.NewScheduleService(environmentConfigReaderService)
 
-	versionCommand := application.NewVersionCommand(version, logger)
-	doctorCommand := application.NewDoctorCommand(coreDoctorService, logger)
-	setupCommand := application.NewSetupCommand(coreSetupService, logger)
-	reportCommand := application.NewReportCommand(coreReportService, logger)
-	daemonCommand := application.NewDaemonCommand(coreScheduleService, reportCommand, time.Tick, logger)
+	versionCommand := cli.NewVersionCommand(version, logger)
+	doctorCommand := cli.NewDoctorCommand(coreDoctorService, logger)
+	setupCommand := cli.NewSetupCommand(coreSetupService, logger)
+	reportCommand := cli.NewReportCommand(coreReportService, logger)
+	daemonCommand := cli.NewDaemonCommand(coreScheduleService, reportCommand, time.Tick, logger)
 
 	switch command {
 	case "version":

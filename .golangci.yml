@@ -22,9 +22,9 @@ linters:
           deny:
             - pkg: github.com/heronlabs/talon/src/application
               desc: core imports nothing from application
-        entity:
+        domain:
           list-mode: strict
-          files: ["**/src/core/entity/**", "!$test"]
+          files: ["**/src/core/domain/**", "!$test"]
           allow:
             - $gostd
             - github.com/heronlabs/talon/src/infrastructure/docker

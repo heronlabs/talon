@@ -1,4 +1,4 @@
-package application
+package cli
 
 import (
 	"bytes"
@@ -9,16 +9,16 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/heronlabs/talon/src/core/entity"
+	"github.com/heronlabs/talon/src/core/domain"
 )
 
 type fakeReport struct {
 	ctx    context.Context
-	report *entity.Report
+	report *domain.Report
 	err    error
 }
 
-func (f *fakeReport) Send(ctx context.Context) (*entity.Report, error) {
+func (f *fakeReport) Send(ctx context.Context) (*domain.Report, error) {
 	f.ctx = ctx
 
 	return f.report, f.err
@@ -49,7 +49,7 @@ func TestReportCommand(t *testing.T) {
 
 	t.Run("Should log the report as JSON in payload when it is sent", func(t *testing.T) {
 		var output bytes.Buffer
-		command := NewReportCommand(&fakeReport{report: &entity.Report{Host: "vps-01"}}, slog.New(slog.NewTextHandler(&output, nil)))
+		command := NewReportCommand(&fakeReport{report: &domain.Report{Host: "vps-01"}}, slog.New(slog.NewTextHandler(&output, nil)))
 
 		_ = command.Run(t.Context())
 
@@ -95,7 +95,7 @@ func TestReportCommand(t *testing.T) {
 
 	t.Run("Should return 1 when the report cannot be encoded as JSON", func(t *testing.T) {
 		var output bytes.Buffer
-		command := NewReportCommand(&fakeReport{report: &entity.Report{System: entity.System{Load1: math.NaN()}}}, slog.New(slog.NewTextHandler(&output, nil)))
+		command := NewReportCommand(&fakeReport{report: &domain.Report{System: domain.System{Load1: math.NaN()}}}, slog.New(slog.NewTextHandler(&output, nil)))
 
 		code := command.Run(t.Context())
 
@@ -106,7 +106,7 @@ func TestReportCommand(t *testing.T) {
 
 	t.Run("Should log the error when the report cannot be encoded as JSON", func(t *testing.T) {
 		var output bytes.Buffer
-		command := NewReportCommand(&fakeReport{report: &entity.Report{System: entity.System{Load1: math.NaN()}}}, slog.New(slog.NewTextHandler(&output, nil)))
+		command := NewReportCommand(&fakeReport{report: &domain.Report{System: domain.System{Load1: math.NaN()}}}, slog.New(slog.NewTextHandler(&output, nil)))
 
 		_ = command.Run(t.Context())
 

@@ -9,7 +9,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/heronlabs/talon/src/core/entity"
+	"github.com/heronlabs/talon/src/core/domain"
 )
 
 // The headers of the request, the media type of its body and the prefix of the token in Authorization.
@@ -34,7 +34,7 @@ func NewReportSenderService(client *http.Client) *ReportSenderService {
 }
 
 // Send posts the report as JSON to endpoint with ctx, with Authorization: Bearer <token> only when there is a token, and returns the reply of the webhook; an answer outside 2xx wraps ErrUnexpectedStatus.
-func (s *ReportSenderService) Send(ctx context.Context, endpoint, token string, report *entity.Report) (*ReportResponse, error) {
+func (s *ReportSenderService) Send(ctx context.Context, endpoint, token string, report *domain.Report) (*ReportResponse, error) {
 	request, err := newRequest(ctx, endpoint, token, report)
 	if err != nil {
 		return nil, err
@@ -54,7 +54,7 @@ func (s *ReportSenderService) Send(ctx context.Context, endpoint, token string, 
 }
 
 // newRequest returns the POST of the report as JSON to endpoint with ctx, with Authorization: Bearer <token> only when there is a token.
-func newRequest(ctx context.Context, endpoint, token string, report *entity.Report) (*http.Request, error) {
+func newRequest(ctx context.Context, endpoint, token string, report *domain.Report) (*http.Request, error) {
 	body, err := json.Marshal(report)
 	if err != nil {
 		return nil, err
