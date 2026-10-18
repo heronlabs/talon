@@ -1,3 +1,9 @@
+## v0.11.1 (2026-10-18)
+
+### Miscellaneous Chores
+
+* other: move commands to application/cli and entity to core/domain (#23) (9f5866dd54e01f3a4e36cfc7b68849f3e2bc0a27)
+
 ## v0.11.0 (2026-10-14)
 
 ### Features
