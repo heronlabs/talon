@@ -1,14 +1,17 @@
 package domain
 
 import (
+	"encoding/json"
+	"reflect"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/heronlabs/talon/src/infrastructure/docker"
 	"github.com/heronlabs/talon/src/infrastructure/manifest"
 )
 
-// The container states, removing, the state of a container being removed, and missing, the state of a service without containers.
+// The container states, removing, the state of a container being removed, missing, the state of a service without containers, and stopped, the state of a Swarm service that wants no replica.
 const (
 	stateRunning      = "running"
 	stateRestarting   = "restarting"
@@ -18,7 +21,14 @@ const (
 	stateDead         = "dead"
 	containerRemoving = "removing"
 	stateMissing      = "missing"
+	stateStopped      = "stopped"
 )
+
+// recentFailureWindow is how long before measuredAt a failed or rejected task still counts.
+const recentFailureWindow = 24 * time.Hour
+
+// runtimeKey is the top-level key of a task spec that the Engine API sets in the task template of a service but not in the spec of its tasks, so the comparison of the specs leaves it out.
+const runtimeKey = "Runtime"
 
 // serviceNameKey is the key of the name of a service in the data of the schema.
 const serviceNameKey = "serviceName"
@@ -47,7 +57,7 @@ const (
 // statePrecedence lists the container states from the most alive to the least.
 var statePrecedence = []string{stateRunning, stateRestarting, statePaused, stateCreated, stateExited, stateDead}
 
-// Service holds a service of a project: its state, replicas, failed tasks, limits and the resources it uses.
+// Service holds a service of a project: its state, replicas, recent failed tasks, last deploy and its state, limits and the resources it uses.
 type Service struct {
 	Name               string  `json:"name"`
 	Managed            bool    `json:"managed"`
@@ -55,6 +65,8 @@ type Service struct {
 	ReplicasRunning    int64   `json:"replicasRunning"`
 	ReplicasDesired    int64   `json:"replicasDesired"`
 	RecentTaskFailures int64   `json:"recentTaskFailures"`
+	LastDeployAt       *string `json:"lastDeployAt"`
+	LastDeployState    *string `json:"lastDeployState"`
 	MemoryUsedMiB      float64 `json:"memoryUsedMiB"`
 	MemoryLimitMiB     float64 `json:"memoryLimitMiB"`
 	CPUPercent         float64 `json:"cpuPercent"`
@@ -66,19 +78,21 @@ type Service struct {
 	BlockWriteMB       float64 `json:"blockWriteMB"`
 }
 
-// NewService returns the service named name for the Swarm service, managed when client, the entry of its project in the manifest or nil, declares it: the state of its containers in snapshot, its replicas, its failed tasks, its limits, the size of its named volumes plus dirSize, the bytes of its directory, and the stats of its containers.
-func NewService(name string, service docker.SwarmService, snapshot docker.Snapshot, dirSize int64, client *manifest.Client) Service {
+// NewService returns the service named name for the Swarm service, managed when client, the entry of its project in the manifest or nil, declares it: stopped when it wants no replica, or else the state of its containers in snapshot, its replicas, its tasks that failed in the recentFailureWindow before measuredAt, its last deploy and the state of its last update, its limits, the size of its named volumes plus dirSize, the bytes of its directory, and the stats of its containers.
+func NewService(name string, service docker.SwarmService, snapshot docker.Snapshot, dirSize int64, client *manifest.Client, measuredAt time.Time) Service {
 	containers := serviceContainers(snapshot.Containers, service.Spec.Name)
-	limits := service.Spec.TaskTemplate.Resources.Limits
+	nanoCPUs, memoryBytes := limitsOf(service.Spec.TaskTemplate)
 	entry := Service{
 		Name:               name,
 		Managed:            slices.Contains(declaredNames(client), name),
-		State:              serviceState(containers),
+		State:              stateOf(service, containers),
 		ReplicasRunning:    service.ServiceStatus.RunningTasks,
 		ReplicasDesired:    service.ServiceStatus.DesiredTasks,
-		RecentTaskFailures: taskFailures(snapshot.Tasks, service.ID),
-		MemoryLimitMiB:     float64(limits.MemoryBytes) / bytesPerMiB,
-		CPULimit:           float64(limits.NanoCPUs) / nanoCPUsPerCPU,
+		RecentTaskFailures: taskFailures(snapshot.Tasks, service.ID, measuredAt),
+		LastDeployAt:       lastDeployAt(snapshot.Tasks, service),
+		LastDeployState:    lastDeployState(service),
+		MemoryLimitMiB:     float64(memoryBytes) / bytesPerMiB,
+		CPULimit:           float64(nanoCPUs) / nanoCPUsPerCPU,
 		DiskGB:             float64(volumesSize(containers, volumeSizes(snapshot.DiskUsage))+dirSize) / bytesPerGB,
 	}
 	entry.addContainersStats(containers, snapshot.Stats)
@@ -86,7 +100,7 @@ func NewService(name string, service docker.SwarmService, snapshot docker.Snapsh
 	return entry
 }
 
-// NewMissingService returns the service named name that the manifest declares without a Swarm service: managed, missing and with every number 0.
+// NewMissingService returns the service named name that the manifest declares without a Swarm service: managed, missing, with every number 0 and without a last deploy.
 func NewMissingService(name string) Service {
 	return Service{Name: name, Managed: true, State: stateMissing}
 }
@@ -145,6 +159,30 @@ func serviceContainers(containers []docker.Container, name string) []docker.Cont
 	return matched
 }
 
+// limitsOf returns the CPU limit in nano CPUs and the memory limit in bytes of the raw task template, each 0 when the template does not hold it or is not JSON.
+func limitsOf(template json.RawMessage) (nanoCPUs, memoryBytes int64) {
+	var decoded struct {
+		Resources struct {
+			Limits struct {
+				NanoCPUs    int64
+				MemoryBytes int64
+			}
+		}
+	}
+	_ = json.Unmarshal(template, &decoded)
+
+	return decoded.Resources.Limits.NanoCPUs, decoded.Resources.Limits.MemoryBytes
+}
+
+// stateOf returns stopped when service wants no replica, whatever its containers, and otherwise the most alive state of containers.
+func stateOf(service docker.SwarmService, containers []docker.Container) string {
+	if service.ServiceStatus.DesiredTasks == 0 {
+		return stateStopped
+	}
+
+	return serviceState(containers)
+}
+
 // serviceState returns the most alive state of containers, missing when there is none and dead when no state is known.
 func serviceState(containers []docker.Container) string {
 	if len(containers) == 0 {
@@ -176,16 +214,71 @@ func containerStates(containers []docker.Container) []string {
 	return states
 }
 
-// taskFailures returns how many tasks of the service serviceID failed or were rejected.
-func taskFailures(tasks []docker.SwarmTask, serviceID string) int64 {
+// taskFailures returns how many tasks of the service serviceID failed or were rejected in the recentFailureWindow before measuredAt.
+func taskFailures(tasks []docker.SwarmTask, serviceID string, measuredAt time.Time) int64 {
+	since := measuredAt.Add(-recentFailureWindow)
 	var failures int64
 	for _, task := range tasks {
-		if task.ServiceID == serviceID && (task.Status.State == taskFailed || task.Status.State == taskRejected) {
+		if task.ServiceID == serviceID && recentFailure(task, since) {
 			failures++
 		}
 	}
 
 	return failures
+}
+
+// recentFailure reports whether task failed or was rejected at since or later; a task without a timestamp, the zero time, is before any since and does not count.
+func recentFailure(task docker.SwarmTask, since time.Time) bool {
+	return (task.Status.State == taskFailed || task.Status.State == taskRejected) && !task.Status.Timestamp.Before(since)
+}
+
+// lastDeployAt returns when the oldest task of service that Swarm still retains with its current task template was created, in RFC3339Nano UTC: when the version that runs started to roll out, since a recovery or a change of replicas creates tasks of the same template; nil when no task has it.
+func lastDeployAt(tasks []docker.SwarmTask, service docker.SwarmService) *string {
+	current := currentTasks(tasks, service)
+	if len(current) == 0 {
+		return nil
+	}
+
+	oldest := slices.MinFunc(current, func(a, b docker.SwarmTask) int { return a.CreatedAt.Compare(b.CreatedAt) })
+	at := oldest.CreatedAt.UTC().Format(time.RFC3339Nano)
+
+	return &at
+}
+
+// currentTasks returns the tasks of service whose spec is its current task template.
+func currentTasks(tasks []docker.SwarmTask, service docker.SwarmService) []docker.SwarmTask {
+	var current []docker.SwarmTask
+	for _, task := range tasks {
+		if task.ServiceID == service.ID && sameSpec(task.Spec, service.Spec.TaskTemplate) {
+			current = append(current, task)
+		}
+	}
+
+	return current
+}
+
+// sameSpec reports whether the raw specs a and b decode to the same JSON values without their top-level runtimeKey, whatever the order of their keys and their spacing; it is false when either is empty or not a JSON object.
+func sameSpec(a, b json.RawMessage) bool {
+	var decodedA, decodedB map[string]any
+	if json.Unmarshal(a, &decodedA) != nil || json.Unmarshal(b, &decodedB) != nil {
+		return false
+	}
+
+	delete(decodedA, runtimeKey)
+	delete(decodedB, runtimeKey)
+
+	return reflect.DeepEqual(decodedA, decodedB)
+}
+
+// lastDeployState returns the state of the last update of service, nil without one or when its state is empty.
+func lastDeployState(service docker.SwarmService) *string {
+	if service.UpdateStatus == nil || service.UpdateStatus.State == "" {
+		return nil
+	}
+
+	state := service.UpdateStatus.State
+
+	return &state
 }
 
 // volumeSizes returns the bytes of each volume of usage by its name; a negative size counts as 0.

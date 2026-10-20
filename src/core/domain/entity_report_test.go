@@ -94,7 +94,7 @@ func TestReport(t *testing.T) {
 	t.Run("Should fill the projects from the Swarm services", func(t *testing.T) {
 		measuredAt := time.Date(2026, 10, 8, 12, 30, 15, 0, time.UTC)
 		snapshot := docker.Snapshot{Services: decode[[]docker.SwarmService](t, `[{"ID":"s1","Spec":{"Name":"shop_api"}}]`)}
-		want := []Project{{Name: "shop", Services: []Service{{Name: "api", State: "missing"}}}}
+		want := []Project{{Name: "shop", Services: []Service{{Name: "api", State: "stopped"}}}}
 
 		report := NewReport("vps-01", measuredAt, "1.2.3", snapshot, host.Snapshot{}, easypanel.Snapshot{}, nil, nil, nil)
 
@@ -107,9 +107,27 @@ func TestReport(t *testing.T) {
 		measuredAt := time.Date(2026, 10, 8, 12, 30, 15, 0, time.UTC)
 		snapshot := docker.Snapshot{Services: decode[[]docker.SwarmService](t, `[{"ID":"s1","Spec":{"Name":"shop_api"}}]`)}
 		easypanelSnapshot := easypanel.Snapshot{Sizes: map[string]map[string]int64{"shop": {"api": 1500000000}}}
-		want := []Project{{Name: "shop", Services: []Service{{Name: "api", State: "missing", DiskGB: 1.5}}}}
+		want := []Project{{Name: "shop", Services: []Service{{Name: "api", State: "stopped", DiskGB: 1.5}}}}
 
 		report := NewReport("vps-01", measuredAt, "1.2.3", snapshot, host.Snapshot{}, easypanelSnapshot, nil, nil, nil)
+
+		if !reflect.DeepEqual(report.Projects, want) {
+			t.Errorf("NewReport() projects = %+v, want %+v", report.Projects, want)
+		}
+	})
+
+	t.Run("Should count the failures of the services in the 24 hours before measuredAt", func(t *testing.T) {
+		measuredAt := time.Date(2026, 10, 20, 9, 0, 0, 0, time.FixedZone("BRT", -3*60*60))
+		snapshot := docker.Snapshot{
+			Services: decode[[]docker.SwarmService](t, `[{"ID":"s1","Spec":{"Name":"shop_api"}}]`),
+			Tasks: decode[[]docker.SwarmTask](t, `[
+				{"ServiceID":"s1","Status":{"Timestamp":"2026-10-19T11:59:59Z","State":"failed"}},
+				{"ServiceID":"s1","Status":{"Timestamp":"2026-10-19T12:00:00Z","State":"failed"}}
+			]`),
+		}
+		want := []Project{{Name: "shop", Services: []Service{{Name: "api", State: "stopped", RecentTaskFailures: 1}}}}
+
+		report := NewReport("vps-01", measuredAt, "1.2.3", snapshot, host.Snapshot{}, easypanel.Snapshot{}, nil, nil, nil)
 
 		if !reflect.DeepEqual(report.Projects, want) {
 			t.Errorf("NewReport() projects = %+v, want %+v", report.Projects, want)
@@ -167,7 +185,7 @@ func TestReport(t *testing.T) {
 		snapshot := docker.Snapshot{Services: decode[[]docker.SwarmService](t, `[{"ID":"s1","Spec":{"Name":"shop_db"}}]`)}
 		declared := decode[manifest.Manifest](t, `{"data":{"host":"vps-01","clients":[{"slug":"shop","schema":{"services":[{"type":"postgres","data":{"serviceName":"db","image":"postgres:18"}}]}}]}}`)
 		configured := &easypanel.ConfigSnapshot{Services: map[string]map[string]easypanel.ServiceConfig{"shop": {"db": {Type: "postgres", Data: decode[map[string]any](t, `{"image":"postgres:18"}`)}}}}
-		want := `"projects":[{"name":"shop","reconcile":{"state":"converged","missingSecrets":[],"error":null},"services":[{"name":"db","managed":true,"state":"missing",`
+		want := `"projects":[{"name":"shop","reconcile":{"state":"converged","missingSecrets":[],"error":null},"services":[{"name":"db","managed":true,"state":"stopped",`
 
 		report := NewReport("vps-01", measuredAt, "1.2.3", snapshot, host.Snapshot{}, easypanel.Snapshot{}, &declared, configured, nil)
 		encoded, _ := json.Marshal(report)

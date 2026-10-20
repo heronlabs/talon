@@ -3,6 +3,7 @@ package domain
 import (
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/heronlabs/talon/src/infrastructure/docker"
 	"github.com/heronlabs/talon/src/infrastructure/easypanel"
@@ -19,13 +20,13 @@ type Project struct {
 	Services  []Service  `json:"services"`
 }
 
-// NewProjects returns each Swarm service of snapshot named <project>_<service>, split on the first _, under its project, in the order the projects first appear, with the bytes of the directory <project>/<service> of easypanelSnapshot, then each client of declared without a Swarm service, in the order of the manifest; the services without _ are skipped. Each project ends with the services its client declares without a Swarm service, in the order of its schema, and has its reconcile against configured.
-func NewProjects(snapshot docker.Snapshot, easypanelSnapshot easypanel.Snapshot, declared *manifest.Manifest, configured *easypanel.ConfigSnapshot) []Project {
+// NewProjects returns each Swarm service of snapshot named <project>_<service>, split on the first _, under its project, in the order the projects first appear, with the bytes of the directory <project>/<service> of easypanelSnapshot and its recent failures counted at measuredAt, then each client of declared without a Swarm service, in the order of the manifest; the services without _ are skipped. Each project ends with the services its client declares without a Swarm service, in the order of its schema, and has its reconcile against configured.
+func NewProjects(snapshot docker.Snapshot, easypanelSnapshot easypanel.Snapshot, declared *manifest.Manifest, configured *easypanel.ConfigSnapshot, measuredAt time.Time) []Project {
 	clients := manifestClients(declared)
 	projects := []Project{}
 	for _, service := range snapshot.Services {
 		if projectName, serviceName, found := strings.Cut(service.Spec.Name, projectSeparator); found {
-			projects = addService(projects, projectName, NewService(serviceName, service, snapshot, easypanelSnapshot.Sizes[projectName][serviceName], findClient(clients, projectName)))
+			projects = addService(projects, projectName, NewService(serviceName, service, snapshot, easypanelSnapshot.Sizes[projectName][serviceName], findClient(clients, projectName), measuredAt))
 		}
 	}
 

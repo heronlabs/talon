@@ -193,7 +193,7 @@ func TestReportService(t *testing.T) {
 		easypanelCollector := &fakeEasypanelCollector{snapshot: easypanel.Snapshot{Sizes: map[string]map[string]int64{"shop": {"api": 1500000000}}}}
 		sender := &fakeReportSender{}
 		service := NewReportService(dockerCollector, &fakeHostCollector{}, easypanelCollector, &fakeManifestReader{}, &fakeEasypanelConfigCollector{}, sender, config, "1.2.3", hostname, time.Now)
-		want := []domain.Project{{Name: "shop", Services: []domain.Service{{Name: "api", State: "missing", DiskGB: 1.5}}}}
+		want := []domain.Project{{Name: "shop", Services: []domain.Service{{Name: "api", State: "stopped", DiskGB: 1.5}}}}
 
 		_, _ = service.Send(t.Context())
 
