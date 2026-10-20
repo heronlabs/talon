@@ -1,3 +1,9 @@
+## v0.12.0 (2026-10-20)
+
+### Features
+
+* feat: report last deploy, stopped state and recent task failures (#24) (f8529d6b53f7226c2e5d8655693b945016af1f0f)
+
 ## v0.11.1 (2026-10-18)
 
 ### Miscellaneous Chores
