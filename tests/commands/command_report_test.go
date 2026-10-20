@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/heronlabs/talon/tests/cli"
 )
@@ -94,16 +95,25 @@ func startRichReportEngine(t *testing.T) string {
 	})
 	mux.HandleFunc("GET /services", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, `[`+
-			`{"ID":"s1","Spec":{"Name":"shop_api","TaskTemplate":{"Resources":{"Limits":{"NanoCPUs":500000000,"MemoryBytes":268435456}}}},"ServiceStatus":{"RunningTasks":1,"DesiredTasks":2}},`+
+			`{"ID":"s1","Spec":{"Name":"shop_api","TaskTemplate":{"Resources":{"Limits":{"NanoCPUs":500000000,"MemoryBytes":268435456}},"Runtime":"container"}},"ServiceStatus":{"RunningTasks":1,"DesiredTasks":2}},`+
 			`{"ID":"s2","Spec":{"Name":"shop_db"},"ServiceStatus":{"RunningTasks":0,"DesiredTasks":1}},`+
 			`{"ID":"s3","Spec":{"Name":"shop_worker"},"ServiceStatus":{"RunningTasks":0,"DesiredTasks":1}},`+
 			`{"ID":"s4","Spec":{"Name":"blog_web"},"ServiceStatus":{"RunningTasks":1,"DesiredTasks":1}},`+
 			`{"ID":"s5","Spec":{"Name":"blog_cron"},"ServiceStatus":{"RunningTasks":0,"DesiredTasks":1}},`+
+			`{"ID":"s7","Spec":{"Name":"blog_backup"},"ServiceStatus":{"RunningTasks":0,"DesiredTasks":0}},`+
 			`{"ID":"s6","Spec":{"Name":"traefik"},"ServiceStatus":{"RunningTasks":1,"DesiredTasks":1}}`+
 			`]`)
 	})
 	mux.HandleFunc("GET /tasks", func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = io.WriteString(w, `[{"ServiceID":"s1","Status":{"State":"failed"}},{"ServiceID":"s1","Status":{"State":"rejected"}},{"ServiceID":"s1","Status":{"State":"running"}},{"ServiceID":"s2","Status":{"State":"shutdown"}}]`)
+		recently := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339Nano)
+		daysAgo := time.Now().Add(-96 * time.Hour).UTC().Format(time.RFC3339Nano)
+		_, _ = io.WriteString(w, `[`+
+			`{"ServiceID":"s1","Status":{"Timestamp":"`+recently+`","State":"failed"}},`+
+			`{"ServiceID":"s1","Status":{"Timestamp":"`+recently+`","State":"rejected"}},`+
+			`{"ServiceID":"s1","Status":{"Timestamp":"`+daysAgo+`","State":"failed"}},`+
+			`{"ServiceID":"s1","CreatedAt":"2026-10-18T12:10:00-03:00","Spec":{"Resources":{"Limits":{"MemoryBytes":268435456,"NanoCPUs":500000000}}},"Status":{"State":"running"}},`+
+			`{"ServiceID":"s2","Status":{"State":"shutdown"}}`+
+			`]`)
 	})
 	mux.HandleFunc("GET /containers/json", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, `[`+
@@ -111,7 +121,8 @@ func startRichReportEngine(t *testing.T) string {
 			`{"Id":"c2","State":"exited","Labels":{"com.docker.swarm.service.name":"shop_db"}},`+
 			`{"Id":"c3","State":"removing","Labels":{"com.docker.swarm.service.name":"shop_db"}},`+
 			`{"Id":"c4","State":"running","Labels":{"com.docker.swarm.service.name":"blog_web"}},`+
-			`{"Id":"c5","State":"unknown","Labels":{"com.docker.swarm.service.name":"blog_cron"}}`+
+			`{"Id":"c5","State":"unknown","Labels":{"com.docker.swarm.service.name":"blog_cron"}},`+
+			`{"Id":"c6","State":"exited","Labels":{"com.docker.swarm.service.name":"blog_backup"}}`+
 			`]`)
 	})
 	mux.HandleFunc("GET /containers/c1/stats", func(w http.ResponseWriter, _ *http.Request) {
@@ -360,7 +371,7 @@ func TestReportCommand(t *testing.T) {
 		t.Setenv("DOCKER_SOCKET", startReportEngine(t))
 		t.Setenv("TALON_HOST_ROOT", newHostRoot(t))
 		wantAgent := `"agent":{"version":"1.2.3","easypanelVersion":null,"easypanelSupported":null,"lastReconcile":null}`
-		wantProjects := `"projects":[{"name":"shop","reconcile":null,"services":[{"name":"api","managed":false,"state":"running","replicasRunning":1,"replicasDesired":1,"recentTaskFailures":0,"memoryUsedMiB":100,"memoryLimitMiB":0,"cpuPercent":0,"cpuLimit":0,"diskGB":0,"netRxMB":0,"netTxMB":0,"blockReadMB":0,"blockWriteMB":0}]}]`
+		wantProjects := `"projects":[{"name":"shop","reconcile":null,"services":[{"name":"api","managed":false,"state":"running","replicasRunning":1,"replicasDesired":1,"recentTaskFailures":0,"lastDeployAt":null,"lastDeployState":null,"memoryUsedMiB":100,"memoryLimitMiB":0,"cpuPercent":0,"cpuLimit":0,"diskGB":0,"netRxMB":0,"netTxMB":0,"blockReadMB":0,"blockWriteMB":0}]}]`
 
 		_, code := cli.Run(t, dir, "report")
 
@@ -455,7 +466,7 @@ func TestReportCommand(t *testing.T) {
 			t.Errorf("exit %d, output %q; want exit 1 with the parse error of line 2", code, out)
 		}
 	})
-	t.Run("Should post the state, limits, failures, disk and stats of each service of each project", func(t *testing.T) {
+	t.Run("Should post the state, last deploy, limits, recent failures, disk and stats of each service of each project", func(t *testing.T) {
 		dir := t.TempDir()
 		webhookURL, received := startWebhook(t, http.StatusOK)
 		writeEnvContent(t, dir, "WEBHOOK_URL="+webhookURL+"\n")
@@ -465,12 +476,13 @@ func TestReportCommand(t *testing.T) {
 		wantSystem := `"dockerImagesGB":1,"dockerBuildCacheGB":0.5}`
 		wantProjects := `"projects":[` +
 			`{"name":"shop","reconcile":null,"services":[` +
-			`{"name":"api","managed":false,"state":"running","replicasRunning":1,"replicasDesired":2,"recentTaskFailures":2,"memoryUsedMiB":100,"memoryLimitMiB":256,"cpuPercent":100,"cpuLimit":0.5,"diskGB":5,"netRxMB":2,"netTxMB":2,"blockReadMB":3,"blockWriteMB":4},` +
-			`{"name":"db","managed":false,"state":"exited","replicasRunning":0,"replicasDesired":1,"recentTaskFailures":0,"memoryUsedMiB":0,"memoryLimitMiB":0,"cpuPercent":0,"cpuLimit":0,"diskGB":0,"netRxMB":0,"netTxMB":0,"blockReadMB":0,"blockWriteMB":0},` +
-			`{"name":"worker","managed":false,"state":"missing","replicasRunning":0,"replicasDesired":1,"recentTaskFailures":0,"memoryUsedMiB":0,"memoryLimitMiB":0,"cpuPercent":0,"cpuLimit":0,"diskGB":0,"netRxMB":0,"netTxMB":0,"blockReadMB":0,"blockWriteMB":0}]},` +
+			`{"name":"api","managed":false,"state":"running","replicasRunning":1,"replicasDesired":2,"recentTaskFailures":2,"lastDeployAt":"2026-10-18T15:10:00Z","lastDeployState":null,"memoryUsedMiB":100,"memoryLimitMiB":256,"cpuPercent":100,"cpuLimit":0.5,"diskGB":5,"netRxMB":2,"netTxMB":2,"blockReadMB":3,"blockWriteMB":4},` +
+			`{"name":"db","managed":false,"state":"exited","replicasRunning":0,"replicasDesired":1,"recentTaskFailures":0,"lastDeployAt":null,"lastDeployState":null,"memoryUsedMiB":0,"memoryLimitMiB":0,"cpuPercent":0,"cpuLimit":0,"diskGB":0,"netRxMB":0,"netTxMB":0,"blockReadMB":0,"blockWriteMB":0},` +
+			`{"name":"worker","managed":false,"state":"missing","replicasRunning":0,"replicasDesired":1,"recentTaskFailures":0,"lastDeployAt":null,"lastDeployState":null,"memoryUsedMiB":0,"memoryLimitMiB":0,"cpuPercent":0,"cpuLimit":0,"diskGB":0,"netRxMB":0,"netTxMB":0,"blockReadMB":0,"blockWriteMB":0}]},` +
 			`{"name":"blog","reconcile":null,"services":[` +
-			`{"name":"web","managed":false,"state":"running","replicasRunning":1,"replicasDesired":1,"recentTaskFailures":0,"memoryUsedMiB":100,"memoryLimitMiB":0,"cpuPercent":50,"cpuLimit":0,"diskGB":0,"netRxMB":0,"netTxMB":0,"blockReadMB":0,"blockWriteMB":0},` +
-			`{"name":"cron","managed":false,"state":"dead","replicasRunning":0,"replicasDesired":1,"recentTaskFailures":0,"memoryUsedMiB":0,"memoryLimitMiB":0,"cpuPercent":0,"cpuLimit":0,"diskGB":0,"netRxMB":0,"netTxMB":0,"blockReadMB":0,"blockWriteMB":0}]}]`
+			`{"name":"web","managed":false,"state":"running","replicasRunning":1,"replicasDesired":1,"recentTaskFailures":0,"lastDeployAt":null,"lastDeployState":null,"memoryUsedMiB":100,"memoryLimitMiB":0,"cpuPercent":50,"cpuLimit":0,"diskGB":0,"netRxMB":0,"netTxMB":0,"blockReadMB":0,"blockWriteMB":0},` +
+			`{"name":"cron","managed":false,"state":"dead","replicasRunning":0,"replicasDesired":1,"recentTaskFailures":0,"lastDeployAt":null,"lastDeployState":null,"memoryUsedMiB":0,"memoryLimitMiB":0,"cpuPercent":0,"cpuLimit":0,"diskGB":0,"netRxMB":0,"netTxMB":0,"blockReadMB":0,"blockWriteMB":0},` +
+			`{"name":"backup","managed":false,"state":"stopped","replicasRunning":0,"replicasDesired":0,"recentTaskFailures":0,"lastDeployAt":null,"lastDeployState":null,"memoryUsedMiB":0,"memoryLimitMiB":0,"cpuPercent":0,"cpuLimit":0,"diskGB":0,"netRxMB":0,"netTxMB":0,"blockReadMB":0,"blockWriteMB":0}]}]`
 
 		_, code := cli.Run(t, dir, "report")
 
@@ -631,7 +643,7 @@ func TestReportCommand(t *testing.T) {
 		unsetKeys(t)
 		t.Setenv("DOCKER_SOCKET", startReportEngineReplying(t, "GET /containers/{id}/stats", http.StatusNotFound, ""))
 		t.Setenv("TALON_HOST_ROOT", newHostRoot(t))
-		wantAPI := `{"name":"api","managed":false,"state":"running","replicasRunning":1,"replicasDesired":1,"recentTaskFailures":0,"memoryUsedMiB":0,`
+		wantAPI := `{"name":"api","managed":false,"state":"running","replicasRunning":1,"replicasDesired":1,"recentTaskFailures":0,"lastDeployAt":null,"lastDeployState":null,"memoryUsedMiB":0,`
 
 		out, code := cli.Run(t, dir, "report")
 
@@ -801,8 +813,8 @@ func TestReportCommand(t *testing.T) {
 		writeHostFile(t, root, "etc/easypanel/projects/shop/api/uploads/image.png", strings.Repeat("i", 600000))
 		writeHostFile(t, root, "etc/easypanel/projects/shop/db/data/base", strings.Repeat("d", 2000000))
 		t.Setenv("TALON_HOST_ROOT", root)
-		wantAPI := `{"name":"api","managed":false,"state":"running","replicasRunning":1,"replicasDesired":2,"recentTaskFailures":2,"memoryUsedMiB":100,"memoryLimitMiB":256,"cpuPercent":100,"cpuLimit":0.5,"diskGB":5.001,`
-		wantDB := `{"name":"db","managed":false,"state":"exited","replicasRunning":0,"replicasDesired":1,"recentTaskFailures":0,"memoryUsedMiB":0,"memoryLimitMiB":0,"cpuPercent":0,"cpuLimit":0,"diskGB":0.002,`
+		wantAPI := `{"name":"api","managed":false,"state":"running","replicasRunning":1,"replicasDesired":2,"recentTaskFailures":2,"lastDeployAt":"2026-10-18T15:10:00Z","lastDeployState":null,"memoryUsedMiB":100,"memoryLimitMiB":256,"cpuPercent":100,"cpuLimit":0.5,"diskGB":5.001,`
+		wantDB := `{"name":"db","managed":false,"state":"exited","replicasRunning":0,"replicasDesired":1,"recentTaskFailures":0,"lastDeployAt":null,"lastDeployState":null,"memoryUsedMiB":0,"memoryLimitMiB":0,"cpuPercent":0,"cpuLimit":0,"diskGB":0.002,`
 
 		_, code := cli.Run(t, dir, "report")
 
@@ -820,7 +832,7 @@ func TestReportCommand(t *testing.T) {
 		root := newHostRoot(t)
 		writeHostFile(t, root, "etc/easypanel/config.json", "{}")
 		t.Setenv("TALON_HOST_ROOT", root)
-		wantAPI := `{"name":"api","managed":false,"state":"running","replicasRunning":1,"replicasDesired":2,"recentTaskFailures":2,"memoryUsedMiB":100,"memoryLimitMiB":256,"cpuPercent":100,"cpuLimit":0.5,"diskGB":5,`
+		wantAPI := `{"name":"api","managed":false,"state":"running","replicasRunning":1,"replicasDesired":2,"recentTaskFailures":2,"lastDeployAt":"2026-10-18T15:10:00Z","lastDeployState":null,"memoryUsedMiB":100,"memoryLimitMiB":256,"cpuPercent":100,"cpuLimit":0.5,"diskGB":5,`
 
 		_, code := cli.Run(t, dir, "report")
 
@@ -1115,8 +1127,8 @@ func TestReportCommand(t *testing.T) {
 		t.Setenv("DOCKER_SOCKET", startReportEngine(t))
 		t.Setenv("TALON_HOST_ROOT", newHostRoot(t))
 		wantProject := `]},{"name":"cms-heronlabs","reconcile":{"state":"converged","missingSecrets":[],"error":null},"services":[` +
-			`{"name":"cms-api","managed":true,"state":"missing","replicasRunning":0,"replicasDesired":0,"recentTaskFailures":0,"memoryUsedMiB":0,"memoryLimitMiB":0,"cpuPercent":0,"cpuLimit":0,"diskGB":0,"netRxMB":0,"netTxMB":0,"blockReadMB":0,"blockWriteMB":0},` +
-			`{"name":"cms-database","managed":true,"state":"missing","replicasRunning":0,"replicasDesired":0,"recentTaskFailures":0,"memoryUsedMiB":0,"memoryLimitMiB":0,"cpuPercent":0,"cpuLimit":0,"diskGB":0,"netRxMB":0,"netTxMB":0,"blockReadMB":0,"blockWriteMB":0}]}]`
+			`{"name":"cms-api","managed":true,"state":"missing","replicasRunning":0,"replicasDesired":0,"recentTaskFailures":0,"lastDeployAt":null,"lastDeployState":null,"memoryUsedMiB":0,"memoryLimitMiB":0,"cpuPercent":0,"cpuLimit":0,"diskGB":0,"netRxMB":0,"netTxMB":0,"blockReadMB":0,"blockWriteMB":0},` +
+			`{"name":"cms-database","managed":true,"state":"missing","replicasRunning":0,"replicasDesired":0,"recentTaskFailures":0,"lastDeployAt":null,"lastDeployState":null,"memoryUsedMiB":0,"memoryLimitMiB":0,"cpuPercent":0,"cpuLimit":0,"diskGB":0,"netRxMB":0,"netTxMB":0,"blockReadMB":0,"blockWriteMB":0}]}]`
 
 		_, code := cli.Run(t, dir, "report")
 
