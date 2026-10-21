@@ -1,3 +1,9 @@
+## v0.12.2 (2026-10-21)
+
+### Documentation
+
+* docs: align README with the Heron Labs format (#25) (79be3332c2087291fd45e9b00453f3a9f190cd49)
+
 ## v0.12.1 (2026-10-21)
 
 ### Bug Fixes
