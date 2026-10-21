@@ -1,3 +1,9 @@
+## v0.12.1 (2026-10-21)
+
+### Bug Fixes
+
+* fix: bump Go toolchain to 1.27.3 (#26) (c2275bd9c711956aad80da48fea5cf49bc38a8d5)
+
 ## v0.12.0 (2026-10-20)
 
 ### Features
