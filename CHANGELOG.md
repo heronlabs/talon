@@ -1,3 +1,9 @@
+## v0.13.0 (2026-10-22)
+
+### Features
+
+* feat: support Easypanel 2.38.0 (#27) (855a2691c704409e0dbadd113429eb57946b2ebb)
+
 ## v0.12.2 (2026-10-21)
 
 ### Documentation
