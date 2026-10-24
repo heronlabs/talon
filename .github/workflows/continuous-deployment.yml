@@ -34,7 +34,7 @@ jobs:
           fetch-depth: 0
 
       - id: release
-        uses: heronlabs/action-tag-release-build@v7
+        uses: heronlabs/action-tag-release@v7
         with:
           ghToken: ${{ github.token }}
           semantic: ${{ inputs.semantic }}
